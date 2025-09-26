@@ -21,7 +21,7 @@ func (m *mockMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.called = true
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(m.response))
+	_, _ = w.Write([]byte(m.response))
 }
 
 func TestX402Handler_NoPaymentRequired(t *testing.T) {

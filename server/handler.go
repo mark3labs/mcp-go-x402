@@ -154,7 +154,7 @@ func (h *X402Handler) send402Response(w http.ResponseWriter, requirement *Paymen
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusPaymentRequired)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (h *X402Handler) decodePaymentHeader(header string) (*PaymentPayload, error) {
@@ -205,7 +205,7 @@ func (h *X402Handler) forwardWithPaymentResponse(w http.ResponseWriter, r *http.
 		w.Header()[k] = v
 	}
 	w.WriteHeader(captureWriter.statusCode)
-	w.Write(captureWriter.body.Bytes())
+	_, _ = w.Write(captureWriter.body.Bytes())
 }
 
 // responseCapture captures HTTP response for modification
