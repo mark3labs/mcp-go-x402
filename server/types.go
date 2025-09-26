@@ -3,6 +3,7 @@ package server
 // PaymentRequirement defines payment requirements for a resource/tool
 // as defined in the x402 specification section 5.1
 type PaymentRequirement struct {
+	X402Version       int               `json:"x402Version"`
 	Scheme            string            `json:"scheme"`
 	Network           string            `json:"network"`
 	MaxAmountRequired string            `json:"maxAmountRequired"`
