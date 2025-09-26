@@ -407,14 +407,6 @@ See the [examples](./examples) directory for more detailed examples:
 5. Settles payment on-chain (unless in verify-only mode)
 6. Executes tool and returns response with payment confirmation
 
-## Roadmap
-
-- ✅ **MCP Client** - Complete support for x402 payments in MCP clients
-- ✅ **MCP Server** - Complete support for x402 payment collection in MCP servers
-- 🔄 **Payment caching** - Cache successful payments for session reuse
-- 🔄 **Multi-asset support** - Support for multiple payment tokens
-- 🔄 **Subscription model** - Support for time-based access passes
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
