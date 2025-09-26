@@ -30,7 +30,6 @@ type X402Transport struct {
 	sessionID       atomic.Value
 	protocolVersion atomic.Value
 	initialized     chan struct{}
-	initializedOnce sync.Once
 
 	// Notification handling
 	notificationHandler func(mcp.JSONRPCNotification)
@@ -146,7 +145,7 @@ func (t *X402Transport) Close() error {
 				req.Header.Set("X-Protocol-Version", version)
 			}
 
-			t.httpClient.Do(req)
+			_, _ = t.httpClient.Do(req)
 		}()
 	}
 
@@ -350,8 +349,34 @@ func (t *X402Transport) SendNotification(ctx context.Context, notification mcp.J
 
 	// Handle 402 for notifications (unusual but possible)
 	if resp.StatusCode == http.StatusPaymentRequired {
-		// Handle payment and retry
-		// Similar logic to SendRequest
+		// Parse payment requirements
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read 402 response: %w", err)
+		}
+
+		var requirements PaymentRequirementsResponse
+		if err := json.Unmarshal(body, &requirements); err != nil {
+			return fmt.Errorf("failed to parse payment requirements: %w", err)
+		}
+
+		// Create and sign payment
+		payment, err := t.handler.CreatePayment(ctx, requirements)
+		if err != nil {
+			return fmt.Errorf("failed to create payment: %w", err)
+		}
+
+		// Retry notification with payment
+		headers := map[string]string{
+			"X-PAYMENT": payment.Encode(),
+		}
+
+		resp2, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(notificationBody), headers)
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		resp = resp2
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {

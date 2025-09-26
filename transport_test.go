@@ -22,7 +22,7 @@ func TestX402Transport_Basic(t *testing.T) {
 			// Return 402 with payment requirements
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusPaymentRequired)
-			json.NewEncoder(w).Encode(PaymentRequirementsResponse{
+			_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
 				X402Version: 1,
 				Error:       "Payment required",
 				Accepts: []PaymentRequirement{
@@ -50,7 +50,7 @@ func TestX402Transport_Basic(t *testing.T) {
 		w.Header().Set("X-PAYMENT-RESPONSE", `{"success":true,"transaction":"0x123"}`)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(transport.JSONRPCResponse{
+		_ = json.NewEncoder(w).Encode(transport.JSONRPCResponse{
 			ID:     mcp.NewRequestId(1),
 			Result: json.RawMessage(`{"data":"test"}`),
 		})
@@ -99,7 +99,7 @@ func TestX402Transport_ExceedsLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusPaymentRequired)
-		json.NewEncoder(w).Encode(PaymentRequirementsResponse{
+		_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
 			X402Version: 1,
 			Error:       "Payment required",
 			Accepts: []PaymentRequirement{
@@ -152,7 +152,7 @@ func TestX402Transport_RateLimit(t *testing.T) {
 		if r.Header.Get("X-PAYMENT") == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusPaymentRequired)
-			json.NewEncoder(w).Encode(PaymentRequirementsResponse{
+			_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
 				X402Version: 1,
 				Error:       "Payment required",
 				Accepts: []PaymentRequirement{
@@ -177,7 +177,7 @@ func TestX402Transport_RateLimit(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(transport.JSONRPCResponse{
+		_ = json.NewEncoder(w).Encode(transport.JSONRPCResponse{
 			ID:     mcp.NewRequestId(requestCount),
 			Result: json.RawMessage(`{"data":"test"}`),
 		})
@@ -227,7 +227,7 @@ func TestX402Transport_PaymentCallback(t *testing.T) {
 		if r.Header.Get("X-PAYMENT") == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusPaymentRequired)
-			json.NewEncoder(w).Encode(PaymentRequirementsResponse{
+			_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
 				X402Version: 1,
 				Error:       "Payment required",
 				Accepts: []PaymentRequirement{
@@ -252,7 +252,7 @@ func TestX402Transport_PaymentCallback(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(transport.JSONRPCResponse{
+		_ = json.NewEncoder(w).Encode(transport.JSONRPCResponse{
 			ID:     mcp.NewRequestId(1),
 			Result: json.RawMessage(`{"data":"test"}`),
 		})

@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
 
@@ -159,6 +161,32 @@ func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequireme
 	}, nil
 }
 
+// derivePrivateKey derives a private key from a seed using BIP-32 HD derivation
+func derivePrivateKey(seed []byte, path accounts.DerivationPath) (*ecdsa.PrivateKey, error) {
+	// Create master key from seed
+	masterKey, err := bip32.NewMasterKey(seed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create master key: %w", err)
+	}
+
+	// Follow the derivation path
+	key := masterKey
+	for _, n := range path {
+		key, err = key.NewChildKey(n)
+		if err != nil {
+			return nil, fmt.Errorf("failed to derive child key: %w", err)
+		}
+	}
+
+	// Convert to ECDSA private key
+	privateKey, err := crypto.ToECDSA(key.Key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to ECDSA key: %w", err)
+	}
+
+	return privateKey, nil
+}
+
 // MnemonicSigner signs with a key derived from a mnemonic phrase
 type MnemonicSigner struct {
 	*PrivateKeySigner
@@ -174,11 +202,17 @@ func NewMnemonicSigner(mnemonic string, derivationPath string) (*MnemonicSigner,
 		derivationPath = "m/44'/60'/0'/0/0" // Default Ethereum path
 	}
 
+	// Parse the derivation path using go-ethereum's parser
+	path, err := accounts.ParseDerivationPath(derivationPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid derivation path: %w", err)
+	}
+
+	// Create seed from mnemonic
 	seed := bip39.NewSeed(mnemonic, "")
 
-	// Derive private key from seed using the derivation path
-	// This is simplified - real implementation would use proper HD derivation
-	privateKey, err := crypto.ToECDSA(crypto.Keccak256(seed)[:32])
+	// Use BIP-32 HD derivation with go-ethereum's path parser
+	privateKey, err := derivePrivateKey(seed, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive private key: %w", err)
 	}
