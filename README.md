@@ -255,26 +255,19 @@ customReq := &x402server.PaymentRequirement{
 srv.AddPayableToolWithRequirement(tool, handler, customReq)
 ```
 
-### Environment Variables for Server
+### Using with Existing MCP Server
 
-```bash
-# Facilitator service URL
-export X402_FACILITATOR_URL=https://facilitator.x402.rs
+```go
+// If you already have an MCP server, wrap it with x402
+mcpServer := server.NewMCPServer("existing", "1.0")
+httpServer := server.NewStreamableHTTPServer(mcpServer)
 
-# Wallet to receive payments
-export X402_PAY_TO=0xYourWallet
+// Wrap with x402 handler
+x402Handler := x402server.NewX402Handler(httpServer, config)
 
-# Token contract address (USDC on Base)
-export X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-
-# Blockchain network
-export X402_NETWORK=base
-
-# Verify-only mode (for testing)
-export X402_VERIFY_ONLY=false
-
-# Server port
-export PORT=8080
+// Use as http.Handler
+http.Handle("/", x402Handler)
+http.ListenAndServe(":8080", nil)
 ```
 
 ## Signer Options (Client)
