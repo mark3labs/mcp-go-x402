@@ -52,9 +52,9 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 		return nil, fmt.Errorf("marshal verify request: %w", err)
 	}
 
-	// Debug logging
-	fmt.Printf("Sending verify request to %s/verify\n", f.baseURL)
-	fmt.Printf("Request body: %s\n", string(body))
+	// Debug logging (verbose - comment out in production)
+	// fmt.Printf("Sending verify request to %s/verify\n", f.baseURL)
+	// fmt.Printf("Request body: %s\n", string(body))
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", f.baseURL+"/verify", bytes.NewReader(body))
 	if err != nil {
@@ -71,7 +71,17 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 	if resp.StatusCode != http.StatusOK {
 		// Try to read error response
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("verify failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		errMsg := string(bodyBytes)
+
+		// Try to parse as JSON for more details
+		var errResp map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
+			if details, ok := errResp["details"]; ok {
+				errMsg = fmt.Sprintf("%s - details: %v", errMsg, details)
+			}
+		}
+
+		return nil, fmt.Errorf("verify failed with status %d: %s", resp.StatusCode, errMsg)
 	}
 
 	var verifyResp VerifyResponse
