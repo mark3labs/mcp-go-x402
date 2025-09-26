@@ -94,28 +94,18 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log payment details for debugging (comment out in production)
-	fmt.Printf("Received payment for tool '%s':\n", mcpReq.Params.Name)
-	fmt.Printf("  From: %s\n", payment.Payload.Authorization.From)
-	fmt.Printf("  To: %s\n", payment.Payload.Authorization.To)
-	fmt.Printf("  Value: %s\n", payment.Payload.Authorization.Value)
-	fmt.Printf("  Network: %s\n", payment.Network)
-
 	// Verify payment with facilitator
 	ctx := r.Context()
 	verifyResp, err := h.facilitator.Verify(ctx, payment, requirement)
 	if err != nil {
-		// Log the actual error for debugging
-		fmt.Printf("Facilitator verification error: %v\n", err)
-		http.Error(w, fmt.Sprintf("Payment verification failed: %v", err), http.StatusBadRequest)
+		http.Error(w, "Payment verification failed", http.StatusBadRequest)
 		return
 	}
 	if !verifyResp.IsValid {
 		errorMsg := "Payment verification failed"
 		if verifyResp.InvalidReason != "" {
-			errorMsg = fmt.Sprintf("Payment verification failed: %s", verifyResp.InvalidReason)
+			errorMsg = verifyResp.InvalidReason
 		}
-		fmt.Printf("Payment invalid: %s\n", errorMsg)
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
 	}
