@@ -246,10 +246,7 @@ customReq := &x402server.PaymentRequirement{
     Description:       "Advanced processing",
     MimeType:          "application/json",
     MaxTimeoutSeconds: 120,
-    Extra: map[string]string{
-        "name":    "USD Coin", // Important: Use "USD Coin" not "USDC" for proper EIP-712
-        "version": "2",
-    },
+
 }
 
 srv.AddPayableToolWithRequirement(tool, handler, customReq)
