@@ -387,8 +387,8 @@ func TestPaymentFlow(t *testing.T) {
 
 See the [examples](./examples) directory for more detailed examples:
 
-- [Basic Client](./examples/basic/main.go) - Simple client with automatic payments
-- [X402 Server](./examples/server/main.go) - Server that collects payments for tools
+- [Client](./examples/client/main.go) - Simple client that can pay for tool use
+- [Server](./examples/server/main.go) - Server that collects payments for tool use
 
 ## Architecture
 
