@@ -56,6 +56,7 @@ type SettlementResponse struct {
 // VerifyRequest sent to facilitator /verify endpoint
 // as defined in the x402 specification section 7.1
 type VerifyRequest struct {
+	X402Version         int                 `json:"x402Version"`
 	PaymentPayload      *PaymentPayload     `json:"paymentPayload"`
 	PaymentRequirements *PaymentRequirement `json:"paymentRequirements"`
 }
@@ -71,6 +72,7 @@ type VerifyResponse struct {
 // SettleRequest sent to facilitator /settle endpoint
 // as defined in the x402 specification section 7.2
 type SettleRequest struct {
+	X402Version         int                 `json:"x402Version"`
 	PaymentPayload      *PaymentPayload     `json:"paymentPayload"`
 	PaymentRequirements *PaymentRequirement `json:"paymentRequirements"`
 }

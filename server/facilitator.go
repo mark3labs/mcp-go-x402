@@ -42,6 +42,7 @@ func NewHTTPFacilitator(baseURL string) *HTTPFacilitator {
 
 func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, requirement *PaymentRequirement) (*VerifyResponse, error) {
 	req := &VerifyRequest{
+		X402Version:         1,
 		PaymentPayload:      payment,
 		PaymentRequirements: requirement,
 	}
@@ -83,6 +84,7 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 
 func (f *HTTPFacilitator) Settle(ctx context.Context, payment *PaymentPayload, requirement *PaymentRequirement) (*SettleResponse, error) {
 	req := &SettleRequest{
+		X402Version:         1,
 		PaymentPayload:      payment,
 		PaymentRequirements: requirement,
 	}
