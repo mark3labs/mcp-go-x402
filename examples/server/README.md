@@ -19,17 +19,17 @@ This example demonstrates how to create an MCP server that requires x402 payment
 ### Environment Variables
 
 ```bash
-# Facilitator URL (defaults to http://localhost:8081)
-export X402_FACILITATOR_URL=https://your-facilitator.com
+# Facilitator URL (defaults to https://facilitator.x402.rs)
+export X402_FACILITATOR_URL=https://facilitator.x402.rs
 
 # Wallet to receive payments
 export X402_PAY_TO=0xYourWalletAddress
 
-# Token contract address (defaults to USDC on Base Sepolia)
-export X402_ASSET=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+# Token contract address (defaults to USDC on Base mainnet)
+export X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 
-# Network (defaults to base-sepolia)
-export X402_NETWORK=base-sepolia
+# Network (defaults to base)
+export X402_NETWORK=base
 
 # Server port (defaults to 8080)
 export PORT=8080
@@ -42,14 +42,16 @@ cd examples/server
 go run main.go
 ```
 
-The server will start on port 8080 (or the specified PORT) and expose:
-- `/mcp` - MCP endpoint with x402 payment support
+The server will start on port 8080 (or the specified PORT). 
+The MCP endpoint is available at the root URL (e.g., `http://localhost:8080`)
+The server internally handles `/mcp` and other MCP protocol routes.
 
 ## Testing the Server
 
 ### 1. Without Payment (Returns 402)
 
 ```bash
+# Note: The server internally routes to /mcp
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -d '{
@@ -75,9 +77,12 @@ Use the x402 MCP client from the basic example to make paid requests:
 ```bash
 # From the examples/basic directory
 export WALLET_PRIVATE_KEY=your_private_key
-export MCP_SERVER_URL=http://localhost:8080/mcp
+export MCP_SERVER_URL=http://localhost:8080
 go run main.go
 ```
+
+Note: The client should connect to the root URL (e.g., `http://localhost:8080`), not `/mcp`. 
+The server handles MCP routing internally.
 
 ## How It Works
 

@@ -117,12 +117,9 @@ func (s *X402Server) Handler() http.Handler {
 // Start starts the x402 server on the specified address
 func (s *X402Server) Start(addr string) error {
 	fmt.Printf("Starting X402 MCP Server on %s\n", addr)
+	fmt.Printf("MCP endpoint: http://localhost%s\n", addr)
 
-	// Setup routes
-	mux := http.NewServeMux()
-
-	// MCP endpoint with x402 wrapper
-	mux.Handle("/mcp", s.x402Handler)
-
-	return http.ListenAndServe(addr, mux)
+	// The httpServer (StreamableHTTPServer) handles routing internally
+	// and expects to be served at the root. It adds /mcp and other routes itself.
+	return http.ListenAndServe(addr, s.x402Handler)
 }

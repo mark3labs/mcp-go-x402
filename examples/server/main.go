@@ -15,7 +15,7 @@ func main() {
 	// You can set the facilitator URL via environment variable or config
 	facilitatorURL := os.Getenv("X402_FACILITATOR_URL")
 	if facilitatorURL == "" {
-		facilitatorURL = "http://localhost:8081" // Default to local facilitator
+		facilitatorURL = "https://facilitator.x402.rs" // Production facilitator
 	}
 
 	// Get wallet configuration from environment
@@ -26,12 +26,12 @@ func main() {
 
 	asset := os.Getenv("X402_ASSET")
 	if asset == "" {
-		asset = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" // USDC on Base Sepolia
+		asset = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" // USDC on Base mainnet
 	}
 
 	network := os.Getenv("X402_NETWORK")
 	if network == "" {
-		network = "base-sepolia"
+		network = "base" // Base mainnet
 	}
 
 	config := &x402server.Config{
@@ -63,11 +63,15 @@ func main() {
 	}
 
 	log.Printf("Starting x402 MCP server on :%s", port)
+	log.Printf("Server URL: http://localhost:%s", port)
 	log.Printf("Facilitator URL: %s", facilitatorURL)
 	log.Printf("Payment recipient: %s", payTo)
 	log.Printf("Asset: %s", asset)
 	log.Printf("Network: %s", network)
 	log.Println("Tool: search (0.01 USDC per query)")
+	log.Println("")
+	log.Println("Connect with client using:")
+	log.Printf("  export MCP_SERVER_URL=http://localhost:%s", port)
 
 	if err := srv.Start(":" + port); err != nil {
 		log.Fatal(err)

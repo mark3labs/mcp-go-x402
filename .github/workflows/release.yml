@@ -2,7 +2,7 @@ name: "Create Release on Tag Push"
 on:
   push:
     tags:
-      - '*'  
+      - "*"
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -34,7 +34,7 @@ jobs:
             -d "{
               \"embeds\": [{
                 \"title\": \"🚀 New Release: $TAG_NAME\",
-                \"description\": \"A new version of mcp-go has been released!\",
+                \"description\": \"A new version of mcp-go-x402 has been released!\",
                 \"color\": 5814783,
                 \"fields\": [
                   {
@@ -56,3 +56,4 @@ jobs:
               }]
             }" \
             $DISCORD_WEBHOOK
+
