@@ -53,8 +53,8 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 	}
 
 	// Debug logging (verbose - comment out in production)
-	// fmt.Printf("Sending verify request to %s/verify\n", f.baseURL)
-	// fmt.Printf("Request body: %s\n", string(body))
+	fmt.Printf("Sending verify request to %s/verify\n", f.baseURL)
+	fmt.Printf("Request body: %s\n", string(body))
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", f.baseURL+"/verify", bytes.NewReader(body))
 	if err != nil {

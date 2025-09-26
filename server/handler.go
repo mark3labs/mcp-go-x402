@@ -95,11 +95,11 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log payment details for debugging (comment out in production)
-	// fmt.Printf("Received payment for tool '%s':\n", mcpReq.Params.Name)
-	// fmt.Printf("  From: %s\n", payment.Payload.Authorization.From)
-	// fmt.Printf("  To: %s\n", payment.Payload.Authorization.To)
-	// fmt.Printf("  Value: %s\n", payment.Payload.Authorization.Value)
-	// fmt.Printf("  Network: %s\n", payment.Network)
+	fmt.Printf("Received payment for tool '%s':\n", mcpReq.Params.Name)
+	fmt.Printf("  From: %s\n", payment.Payload.Authorization.From)
+	fmt.Printf("  To: %s\n", payment.Payload.Authorization.To)
+	fmt.Printf("  Value: %s\n", payment.Payload.Authorization.Value)
+	fmt.Printf("  Network: %s\n", payment.Network)
 
 	// Verify payment with facilitator
 	ctx := r.Context()

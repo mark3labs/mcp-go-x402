@@ -79,12 +79,12 @@ func (s *X402Server) AddPayableTool(
 		MaxTimeoutSeconds: 60,
 	}
 
-	// Handle USDC naming
-	if s.config.DefaultAsset != "" {
-		requirement.Extra = map[string]string{
-			"name":    "USDC",
-			"version": "2",
-		}
+	// Set proper EIP-712 domain parameters for USDC
+	// Note: The client uses Extra["name"] for the EIP-712 domain name,
+	// but USDC requires "USD Coin" not "USDC" for proper signature verification
+	requirement.Extra = map[string]string{
+		"name":    "USD Coin", // Correct EIP-712 domain name for USDC
+		"version": "2",
 	}
 
 	// Register payment requirement
