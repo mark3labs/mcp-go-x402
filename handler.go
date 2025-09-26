@@ -23,6 +23,10 @@ type HandlerConfig struct {
 
 // NewPaymentHandler creates a new payment handler
 func NewPaymentHandler(signer PaymentSigner, config *HandlerConfig) (*PaymentHandler, error) {
+	if signer == nil {
+		return nil, fmt.Errorf("signer cannot be nil")
+	}
+
 	if config == nil {
 		config = &HandlerConfig{
 			MaxPaymentAmount: "1000000", // Default 1 USDC
@@ -45,7 +49,14 @@ func NewPaymentHandler(signer PaymentSigner, config *HandlerConfig) (*PaymentHan
 // ShouldPay determines if a payment should be made
 func (h *PaymentHandler) ShouldPay(req PaymentRequirement) (bool, error) {
 	amount := new(big.Int)
-	amount.SetString(req.MaxAmountRequired, 10)
+	if _, ok := amount.SetString(req.MaxAmountRequired, 10); !ok {
+		return false, fmt.Errorf("invalid payment amount: %s", req.MaxAmountRequired)
+	}
+
+	// Validate amount is positive
+	if amount.Sign() <= 0 {
+		return false, fmt.Errorf("payment amount must be positive: %s", req.MaxAmountRequired)
+	}
 
 	// Check budget limits
 	if err := h.budgetManager.CanSpend(amount, req.Resource); err != nil {
@@ -55,7 +66,9 @@ func (h *PaymentHandler) ShouldPay(req PaymentRequirement) (bool, error) {
 	// Check auto-pay threshold
 	if h.config.AutoPayThreshold != "" {
 		threshold := new(big.Int)
-		threshold.SetString(h.config.AutoPayThreshold, 10)
+		if _, ok := threshold.SetString(h.config.AutoPayThreshold, 10); !ok {
+			return false, fmt.Errorf("invalid auto-pay threshold: %s", h.config.AutoPayThreshold)
+		}
 
 		if amount.Cmp(threshold) <= 0 {
 			return true, nil
@@ -97,7 +110,9 @@ func (h *PaymentHandler) CreatePayment(ctx context.Context, reqs PaymentRequirem
 
 	// Record the payment
 	amount := new(big.Int)
-	amount.SetString(selected.MaxAmountRequired, 10)
+	if _, ok := amount.SetString(selected.MaxAmountRequired, 10); !ok {
+		return nil, fmt.Errorf("invalid payment amount for recording: %s", selected.MaxAmountRequired)
+	}
 	h.budgetManager.RecordPayment(amount, selected.Resource)
 
 	return payment, nil
@@ -129,7 +144,15 @@ func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*Pay
 		}
 
 		amount := new(big.Int)
-		amount.SetString(req.MaxAmountRequired, 10)
+		if _, ok := amount.SetString(req.MaxAmountRequired, 10); !ok {
+			// Skip invalid amounts
+			continue
+		}
+
+		// Skip zero or negative amounts
+		if amount.Sign() <= 0 {
+			continue
+		}
 
 		// Select the cheapest option
 		if best == nil || amount.Cmp(bestAmount) < 0 {

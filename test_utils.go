@@ -32,7 +32,7 @@ func (r *PaymentRecorder) PaymentCount() int {
 	return len(r.events)
 }
 
-// LastPayment returns the most recent payment event
+// LastPayment returns the most recent payment event (returns a copy to prevent mutations)
 func (r *PaymentRecorder) LastPayment() *PaymentEvent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -40,16 +40,29 @@ func (r *PaymentRecorder) LastPayment() *PaymentEvent {
 	if len(r.events) == 0 {
 		return nil
 	}
-	return &r.events[len(r.events)-1]
+
+	// Return a deep copy to prevent mutations
+	last := r.events[len(r.events)-1]
+	eventCopy := last
+	if last.Amount != nil {
+		eventCopy.Amount = new(big.Int).Set(last.Amount)
+	}
+	return &eventCopy
 }
 
-// GetEvents returns all recorded events
+// GetEvents returns all recorded events (returns deep copies to prevent mutations)
 func (r *PaymentRecorder) GetEvents() []PaymentEvent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	events := make([]PaymentEvent, len(r.events))
-	copy(events, r.events)
+	for i, event := range r.events {
+		events[i] = event
+		// Deep copy the Amount field if it exists
+		if event.Amount != nil {
+			events[i].Amount = new(big.Int).Set(event.Amount)
+		}
+	}
 	return events
 }
 
@@ -60,7 +73,7 @@ func (r *PaymentRecorder) Clear() {
 	r.events = make([]PaymentEvent, 0)
 }
 
-// SuccessfulPayments returns only successful payment events
+// SuccessfulPayments returns only successful payment events (returns deep copies)
 func (r *PaymentRecorder) SuccessfulPayments() []PaymentEvent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -68,13 +81,18 @@ func (r *PaymentRecorder) SuccessfulPayments() []PaymentEvent {
 	var successful []PaymentEvent
 	for _, event := range r.events {
 		if event.Type == PaymentEventSuccess {
-			successful = append(successful, event)
+			eventCopy := event
+			// Deep copy the Amount field if it exists
+			if event.Amount != nil {
+				eventCopy.Amount = new(big.Int).Set(event.Amount)
+			}
+			successful = append(successful, eventCopy)
 		}
 	}
 	return successful
 }
 
-// FailedPayments returns only failed payment events
+// FailedPayments returns only failed payment events (returns deep copies)
 func (r *PaymentRecorder) FailedPayments() []PaymentEvent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -82,7 +100,12 @@ func (r *PaymentRecorder) FailedPayments() []PaymentEvent {
 	var failed []PaymentEvent
 	for _, event := range r.events {
 		if event.Type == PaymentEventFailure {
-			failed = append(failed, event)
+			eventCopy := event
+			// Deep copy the Amount field if it exists
+			if event.Amount != nil {
+				eventCopy.Amount = new(big.Int).Set(event.Amount)
+			}
+			failed = append(failed, eventCopy)
 		}
 	}
 	return failed

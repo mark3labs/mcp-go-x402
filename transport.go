@@ -253,14 +253,18 @@ func (t *X402Transport) handlePaymentRequired(ctx context.Context, resp *http.Re
 		t.recordPaymentEvent(PaymentEventSuccess, method, requirements)
 	case http.StatusPaymentRequired:
 		t.recordPaymentError(PaymentEventFailure, method, requirements, fmt.Errorf("payment rejected: server returned 402 after payment"))
+		// Ensure body is closed even on error
+		defer resp2.Body.Close()
 		// Read and check the new 402 response
 		body, readErr := io.ReadAll(resp2.Body)
-		resp2.Body.Close()
 		if readErr == nil {
 			var paymentReqs PaymentRequirementsResponse
 			if err := json.Unmarshal(body, &paymentReqs); err == nil && paymentReqs.X402Version > 0 {
 				return nil, fmt.Errorf("payment rejected by server (check clock synchronization)")
 			}
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("payment required (402): failed to read response: %w", readErr)
 		}
 		return nil, fmt.Errorf("payment required (402): %s", body)
 	default:
@@ -279,6 +283,26 @@ func (t *X402Transport) processResponse(ctx context.Context, resp *http.Response
 		if err != nil {
 			return nil, fmt.Errorf("failed to read error response: %w", err)
 		}
+
+		// Handle specific HTTP status codes
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("unauthorized (401): authentication required")
+		case http.StatusForbidden:
+			return nil, fmt.Errorf("forbidden (403): access denied")
+		case http.StatusNotFound:
+			return nil, fmt.Errorf("not found (404): endpoint does not exist")
+		case http.StatusTooManyRequests:
+			return nil, fmt.Errorf("rate limited (429): too many requests")
+		case http.StatusInternalServerError:
+			return nil, fmt.Errorf("server error (500): internal server error")
+		case http.StatusBadGateway:
+			return nil, fmt.Errorf("bad gateway (502): upstream server error")
+		case http.StatusServiceUnavailable:
+			return nil, fmt.Errorf("service unavailable (503): server temporarily unavailable")
+		}
+
+		// Try to parse as JSON-RPC error
 		var errResponse transport.JSONRPCResponse
 		if err := json.Unmarshal(body, &errResponse); err == nil {
 			return &errResponse, nil
@@ -330,13 +354,18 @@ func (t *X402Transport) sendHTTP(ctx context.Context, method string, body io.Rea
 
 // sendHTTPWithHeaders sends an HTTP request with custom headers (for x402 payments)
 func (t *X402Transport) sendHTTPWithHeaders(ctx context.Context, method string, body io.Reader, acceptType string, extraHeaders map[string]string) (*http.Response, error) {
+	// Check for context cancellation before making expensive operations
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled before request: %w", err)
+	}
+
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, method, t.serverURL.String(), body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set standard headers
+	// Set standard headers (thread-safe, each request gets its own headers)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", acceptType)
 
@@ -586,7 +615,10 @@ func (t *X402Transport) recordPaymentEvent(eventType PaymentEventType, method st
 
 	req := reqs.Accepts[0]
 	amount := new(big.Int)
-	amount.SetString(req.MaxAmountRequired, 10)
+	// Safely parse amount, use zero if invalid
+	if _, ok := amount.SetString(req.MaxAmountRequired, 10); !ok {
+		amount = big.NewInt(0)
+	}
 
 	event := PaymentEvent{
 		Type:      eventType,
@@ -622,7 +654,10 @@ func (t *X402Transport) recordPaymentError(eventType PaymentEventType, method st
 
 	req := reqs.Accepts[0]
 	amount := new(big.Int)
-	amount.SetString(req.MaxAmountRequired, 10)
+	// Safely parse amount, use zero if invalid
+	if _, ok := amount.SetString(req.MaxAmountRequired, 10); !ok {
+		amount = big.NewInt(0)
+	}
 
 	event := PaymentEvent{
 		Type:      eventType,

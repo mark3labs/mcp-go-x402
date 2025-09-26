@@ -40,6 +40,21 @@ func NewBudgetManager(maxPaymentAmount string, rateLimits *RateLimits) (*BudgetM
 		if _, ok := maxAmount.SetString(maxPaymentAmount, 10); !ok {
 			return nil, fmt.Errorf("invalid max payment amount: %s", maxPaymentAmount)
 		}
+		// Validate max amount is positive
+		if maxAmount.Sign() <= 0 {
+			return nil, fmt.Errorf("max payment amount must be positive: %s", maxPaymentAmount)
+		}
+	}
+
+	// Validate rate limits
+	if rateLimits != nil && rateLimits.MaxAmountPerHour != "" {
+		hourlyMax := new(big.Int)
+		if _, ok := hourlyMax.SetString(rateLimits.MaxAmountPerHour, 10); !ok {
+			return nil, fmt.Errorf("invalid max hourly amount: %s", rateLimits.MaxAmountPerHour)
+		}
+		if hourlyMax.Sign() <= 0 {
+			return nil, fmt.Errorf("max hourly amount must be positive: %s", rateLimits.MaxAmountPerHour)
+		}
 	}
 
 	bm := &BudgetManager{
@@ -69,13 +84,13 @@ func (bm *BudgetManager) CanSpend(amount *big.Int, resource string) error {
 	}
 
 	if bm.rateLimits != nil {
-		// Reset counters if needed
-		if now.After(bm.hourlyResetTime) {
+		// Reset counters if needed (use >= for boundary condition)
+		if now.After(bm.hourlyResetTime) || now.Equal(bm.hourlyResetTime) {
 			bm.hourlySpent = big.NewInt(0)
 			bm.hourlyResetTime = now.Add(time.Hour)
 		}
 
-		if now.After(bm.minuteResetTime) {
+		if now.After(bm.minuteResetTime) || now.Equal(bm.minuteResetTime) {
 			bm.minuteCount = 0
 			bm.minuteResetTime = now.Add(time.Minute)
 		}
@@ -89,7 +104,10 @@ func (bm *BudgetManager) CanSpend(amount *big.Int, resource string) error {
 
 		if bm.rateLimits.MaxAmountPerHour != "" {
 			maxHourly := new(big.Int)
-			maxHourly.SetString(bm.rateLimits.MaxAmountPerHour, 10)
+			if _, ok := maxHourly.SetString(bm.rateLimits.MaxAmountPerHour, 10); !ok {
+				// This should have been validated in NewBudgetManager, but check anyway
+				return fmt.Errorf("invalid max hourly amount: %s", bm.rateLimits.MaxAmountPerHour)
+			}
 
 			newTotal := new(big.Int).Add(bm.hourlySpent, amount)
 			if newTotal.Cmp(maxHourly) > 0 {

@@ -84,17 +84,34 @@ func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequireme
 		time.Now().UnixNano(), req.Resource, s.address.Hex())))
 	nonce := "0x" + hex.EncodeToString(nonceBytes)
 
-	// Create time window with some buffer for clock skew
-	// Make validAfter 5 seconds in the past to account for clock differences
-	validAfter := time.Now().Add(-5 * time.Second).Unix()
-	validBefore := time.Now().Add(time.Duration(req.MaxTimeoutSeconds) * time.Second).Unix()
+	// Create time window with configurable buffer for clock skew
+	// Default to 30 seconds in the past to account for larger clock differences
+	// This is more lenient than the original 5 seconds
+	const clockSkewBuffer = 30 * time.Second
+	validAfter := time.Now().Add(-clockSkewBuffer).Unix()
+
+	// Ensure timeout is reasonable (at least 60 seconds, max 1 hour)
+	timeout := req.MaxTimeoutSeconds
+	if timeout < 60 {
+		timeout = 60
+	} else if timeout > 3600 {
+		timeout = 3600
+	}
+	validBefore := time.Now().Add(time.Duration(timeout) * time.Second).Unix()
 
 	// Create EIP-712 typed data
 	chainID := GetChainID(req.Network)
 
 	// Parse value
 	value := new(big.Int)
-	value.SetString(req.MaxAmountRequired, 10)
+	if _, ok := value.SetString(req.MaxAmountRequired, 10); !ok {
+		return nil, fmt.Errorf("invalid payment amount: %s", req.MaxAmountRequired)
+	}
+
+	// Validate amount is positive
+	if value.Sign() <= 0 {
+		return nil, fmt.Errorf("payment amount must be positive: %s", req.MaxAmountRequired)
+	}
 
 	typedData := apitypes.TypedData{
 		Types: apitypes.Types{
@@ -277,8 +294,28 @@ func (m *MockSigner) HasAsset(asset, network string) bool {
 }
 
 func (m *MockSigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
+	// Validate amount even in mock signer
+	value := new(big.Int)
+	if _, ok := value.SetString(req.MaxAmountRequired, 10); !ok {
+		return nil, fmt.Errorf("invalid payment amount: %s", req.MaxAmountRequired)
+	}
+	if value.Sign() <= 0 {
+		return nil, fmt.Errorf("payment amount must be positive: %s", req.MaxAmountRequired)
+	}
+
 	// Generate deterministic fake signature for testing
 	fakeSignature := strings.Repeat("00", 65)
+
+	// Use same time window logic as real signer
+	const clockSkewBuffer = 30 * time.Second
+	validAfter := time.Now().Add(-clockSkewBuffer).Unix()
+	timeout := req.MaxTimeoutSeconds
+	if timeout < 60 {
+		timeout = 60
+	} else if timeout > 3600 {
+		timeout = 3600
+	}
+	validBefore := time.Now().Add(time.Duration(timeout) * time.Second).Unix()
 
 	return &PaymentPayload{
 		X402Version: 1,
@@ -290,8 +327,8 @@ func (m *MockSigner) SignPayment(ctx context.Context, req PaymentRequirement) (*
 				From:        m.address,
 				To:          req.PayTo,
 				Value:       req.MaxAmountRequired,
-				ValidAfter:  fmt.Sprintf("%d", time.Now().Unix()),
-				ValidBefore: fmt.Sprintf("%d", time.Now().Add(60*time.Second).Unix()),
+				ValidAfter:  fmt.Sprintf("%d", validAfter),
+				ValidBefore: fmt.Sprintf("%d", validBefore),
 				Nonce:       "0x" + strings.Repeat("11", 32),
 			},
 		},
