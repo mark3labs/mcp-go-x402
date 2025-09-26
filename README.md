@@ -1,17 +1,27 @@
 # mcp-go-x402
 
-X402 payment protocol support for [MCP-Go](https://github.com/mark3labs/mcp-go) clients.
+X402 payment protocol support for [MCP-Go](https://github.com/mark3labs/mcp-go) clients and servers.
 
-This library provides a transport implementation that adds [x402 protocol](https://github.com/coinbase/x402) support to MCP clients, enabling automatic micropayments for accessing paid MCP services.
+This library provides:
+- **Client Transport**: Automatic x402 payment handling for MCP clients
+- **Server Wrapper**: Payment collection support for MCP servers
 
 ## Features
 
+### Client Features
 - 🔌 **Drop-in replacement**: Fully compatible with mcp-go transport interface
 - 💰 **Automatic payments**: Handles 402 responses transparently
 - 🔐 **Multiple signers**: Support for private keys, mnemonics, keystores
 - 📊 **Budget management**: Configurable spending limits and rate limiting
 - 🎯 **Smart payment**: Automatic for small amounts, callbacks for large
 - 🧪 **Testing support**: Mock signers and payment recorders for easy testing
+
+### Server Features
+- 💳 **Payment collection**: Require payments for specific MCP tools
+- 🔒 **Payment verification**: Automatic verification via x402 facilitator
+- ⛓️ **On-chain settlement**: Automatic settlement of verified payments
+- 🎛️ **Flexible pricing**: Set different prices for different tools
+- 🔄 **Mixed mode**: Support both free and paid tools on same server
 
 ## Installation
 
@@ -20,6 +30,8 @@ go get github.com/mark3labs/mcp-go-x402
 ```
 
 ## Quick Start
+
+### Client Usage
 
 ```go
 package main
@@ -80,7 +92,72 @@ func main() {
 }
 ```
 
-## Configuration Options
+### Server Usage
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+    x402server "github.com/mark3labs/mcp-go-x402/server"
+)
+
+func main() {
+    // Configure x402 server
+    config := &x402server.Config{
+        FacilitatorURL:  "https://facilitator.x402.rs",
+        DefaultPayTo:    "0xYourWallet",
+        DefaultAsset:    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+        DefaultNetwork:  "base",
+    }
+    
+    // Create x402 server
+    srv := x402server.NewX402Server("my-server", "1.0.0", config)
+    
+    // Add a free tool
+    srv.AddTool(
+        mcp.NewTool("free-tool", 
+            mcp.WithDescription("This tool is free")),
+        freeToolHandler,
+    )
+    
+    // Add a paid tool (0.01 USDC per call)
+    srv.AddPayableTool(
+        mcp.NewTool("premium-tool",
+            mcp.WithDescription("Premium feature"),
+            mcp.WithString("input", mcp.Required())),
+        premiumToolHandler,
+        "10000", // 0.01 USDC (6 decimals)
+        "Access to premium feature",
+    )
+    
+    // Start server
+    log.Println("Starting x402 MCP server on :8080")
+    if err := srv.Start(":8080"); err != nil {
+        log.Fatal(err)
+    }
+}
+
+func freeToolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    return &mcp.CallToolResult{
+        Content: []mcp.Content{mcp.NewTextContent("Free response")},
+    }, nil
+}
+
+func premiumToolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    input := req.GetString("input", "")
+    // Process premium request
+    return &mcp.CallToolResult{
+        Content: []mcp.Content{mcp.NewTextContent("Premium response for: " + input)},
+    }, nil
+}
+```
+
+## Client Configuration Options
 
 ### Basic Configuration
 
@@ -142,7 +219,58 @@ config := x402.Config{
 }
 ```
 
-## Signer Options
+## Server Configuration Options
+
+### Basic Server Configuration
+
+```go
+config := &x402server.Config{
+    FacilitatorURL:  "https://facilitator.x402.rs",
+    DefaultPayTo:    "0xYourWallet",
+    DefaultAsset:    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+    DefaultNetwork:  "base",
+    VerifyOnly:      false, // Set to true for testing without settlement
+}
+```
+
+### Custom Payment Requirements
+
+```go
+// Add tool with custom payment requirements
+customReq := &x402server.PaymentRequirement{
+    Scheme:            "exact",
+    Network:           "base",
+    MaxAmountRequired: "50000", // 0.05 USDC
+    Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    PayTo:             "0xYourWallet",
+    Description:       "Advanced processing",
+    MimeType:          "application/json",
+    MaxTimeoutSeconds: 120,
+    Extra: map[string]string{
+        "name":    "USD Coin",  // EIP-712 domain name for USDC
+        "version": "2",
+    },
+}
+
+srv.AddPayableToolWithRequirement(tool, handler, customReq)
+```
+
+### Using with Existing MCP Server
+
+```go
+// If you already have an MCP server, wrap it with x402
+mcpServer := server.NewMCPServer("existing", "1.0")
+httpServer := server.NewStreamableHTTPServer(mcpServer)
+
+// Wrap with x402 handler
+x402Handler := x402server.NewX402Handler(httpServer, config)
+
+// Use as http.Handler
+http.Handle("/", x402Handler)
+http.ListenAndServe(":8080", nil)
+```
+
+## Signer Options (Client)
 
 ### Private Key
 
@@ -259,12 +387,33 @@ func TestPaymentFlow(t *testing.T) {
 
 See the [examples](./examples) directory for more detailed examples:
 
-- [Basic Usage](./examples/basic/main.go) - Simple payment setup
+- [Basic Client](./examples/basic/main.go) - Simple client with automatic payments
+- [X402 Server](./examples/server/main.go) - Server that collects payments for tools
+
+## Architecture
+
+### Client Flow
+1. Client makes MCP request through x402 transport
+2. If server returns 402 Payment Required, transport extracts payment requirements
+3. Transport uses configured signer to create payment authorization
+4. Transport retries request with X-PAYMENT header
+5. Server verifies and settles payment, then returns response
+
+### Server Flow
+1. Server receives MCP request
+2. Checks if requested tool requires payment
+3. If no payment provided, returns 402 with payment requirements
+4. If payment provided, verifies with facilitator service
+5. Settles payment on-chain (unless in verify-only mode)
+6. Executes tool and returns response with payment confirmation
 
 ## Roadmap
 
 - ✅ **MCP Client** - Complete support for x402 payments in MCP clients
-- ⏳ **MCP Server** - TODO: Add x402 payment collection support for MCP servers
+- ✅ **MCP Server** - Complete support for x402 payment collection in MCP servers
+- 🔄 **Payment caching** - Cache successful payments for session reuse
+- 🔄 **Multi-asset support** - Support for multiple payment tokens
+- 🔄 **Subscription model** - Support for time-based access passes
 
 ## Contributing
 
