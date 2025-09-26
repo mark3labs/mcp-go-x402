@@ -84,8 +84,9 @@ func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequireme
 		time.Now().UnixNano(), req.Resource, s.address.Hex())))
 	nonce := "0x" + hex.EncodeToString(nonceBytes)
 
-	// Create time window
-	validAfter := time.Now().Unix()
+	// Create time window with some buffer for clock skew
+	// Make validAfter 5 seconds in the past to account for clock differences
+	validAfter := time.Now().Add(-5 * time.Second).Unix()
 	validBefore := time.Now().Add(time.Duration(req.MaxTimeoutSeconds) * time.Second).Unix()
 
 	// Create EIP-712 typed data

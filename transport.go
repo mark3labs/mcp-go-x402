@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -21,6 +22,7 @@ import (
 )
 
 // X402Transport implements transport.Interface with x402 payment support
+// It is based on StreamableHTTP with added x402 payment handling
 type X402Transport struct {
 	serverURL  *url.URL
 	httpClient *http.Client
@@ -30,12 +32,13 @@ type X402Transport struct {
 	sessionID       atomic.Value
 	protocolVersion atomic.Value
 	initialized     chan struct{}
+	initializedOnce sync.Once
 
 	// Notification handling
 	notificationHandler func(mcp.JSONRPCNotification)
 	notifyMu            sync.RWMutex
 
-	// Request handling
+	// Request handling for bidirectional support
 	requestHandler transport.RequestHandler
 	requestMu      sync.RWMutex
 
@@ -140,9 +143,9 @@ func (t *X402Transport) Close() error {
 				return
 			}
 
-			req.Header.Set("X-Session-Id", sessionID)
+			req.Header.Set(transport.HeaderKeySessionID, sessionID)
 			if version := t.protocolVersion.Load().(string); version != "" {
-				req.Header.Set("X-Protocol-Version", version)
+				req.Header.Set(transport.HeaderKeyProtocolVersion, version)
 			}
 
 			_, _ = t.httpClient.Do(req)
@@ -158,6 +161,9 @@ func (t *X402Transport) SetProtocolVersion(version string) {
 	t.protocolVersion.Store(version)
 }
 
+// ErrSessionTerminated is returned when a session is terminated (404)
+var ErrSessionTerminated = errors.New("session terminated (404). need to re-initialize")
+
 // SendRequest implements transport.Interface with x402 payment handling
 func (t *X402Transport) SendRequest(ctx context.Context, request transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
 	// Marshal request
@@ -166,18 +172,30 @@ func (t *X402Transport) SendRequest(ctx context.Context, request transport.JSONR
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	ctx, cancel := t.contextAwareOfClientClose(ctx)
+	defer cancel()
+
 	// Try request without payment first
-	resp, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(requestBody), nil)
+	resp, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(requestBody), "application/json, text/event-stream")
 	if err != nil {
-		return nil, err
+		if errors.Is(err, ErrSessionTerminated) && request.Method == string(mcp.MethodInitialize) {
+			// If the request is initialize, should not return a SessionTerminated error
+			// It should be a genuine endpoint-routing issue
+		} else {
+			return nil, fmt.Errorf("failed to send request: %w", err)
+		}
+	}
+
+	// Only proceed if we have a valid response
+	if resp == nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	// Check for 402 Payment Required
 	if resp.StatusCode == http.StatusPaymentRequired {
-		defer resp.Body.Close()
-
 		// Parse payment requirements
 		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close() // Close the 402 response body after reading
 		if err != nil {
 			return nil, fmt.Errorf("failed to read 402 response: %w", err)
 		}
@@ -198,49 +216,122 @@ func (t *X402Transport) SendRequest(ctx context.Context, request transport.JSONR
 		}
 
 		// Retry request with payment
+		paymentHeader := payment.Encode()
 		headers := map[string]string{
-			"X-PAYMENT": payment.Encode(),
+			"X-Payment": paymentHeader, // Note: Header names are case-insensitive in HTTP
 		}
 
-		resp2, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(requestBody), headers)
+		resp2, err := t.sendHTTPWithHeaders(ctx, http.MethodPost, bytes.NewReader(requestBody), "application/json, text/event-stream", headers)
 		if err != nil {
 			t.recordPaymentError(PaymentEventFailure, request.Method, requirements, err)
-			return nil, err
+			return nil, fmt.Errorf("failed to send payment request: %w", err)
 		}
 
+		// Replace the 402 response with the new response
 		resp = resp2
 
-		// Check for payment response header
-		if paymentResponse := resp.Header.Get("X-PAYMENT-RESPONSE"); paymentResponse != "" {
-			// Payment was processed
+		// Check payment status based on response
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
+			// Payment was successful
 			t.recordPaymentEvent(PaymentEventSuccess, request.Method, requirements)
+		} else if resp.StatusCode == http.StatusPaymentRequired {
+			// Server rejected the payment (likely due to timing or signature issues)
+			t.recordPaymentError(PaymentEventFailure, request.Method, requirements, fmt.Errorf("payment rejected: server returned 402 after payment"))
+		} else {
+			// Unexpected status code
+			t.recordPaymentError(PaymentEventFailure, request.Method, requirements, fmt.Errorf("unexpected status after payment: %d", resp.StatusCode))
 		}
 	}
 
 	defer resp.Body.Close()
 
-	// Handle response based on content type
-	return t.handleResponse(ctx, resp)
+	// If we still have 402 after payment attempt, the payment was rejected
+	if resp.StatusCode == http.StatusPaymentRequired {
+		body, _ := io.ReadAll(resp.Body)
+		// Check if this is a payment requirements response
+		var paymentReqs PaymentRequirementsResponse
+		if err := json.Unmarshal(body, &paymentReqs); err == nil && paymentReqs.X402Version > 0 {
+			// Payment was rejected - likely clock skew or invalid signature
+			return nil, fmt.Errorf("payment rejected by server (check clock synchronization)")
+		}
+		return nil, fmt.Errorf("payment required (402): %s", body)
+	}
+
+	// Check for non-successful status codes
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		// Try to parse the response as JSON-RPC (might contain error details)
+		body, _ := io.ReadAll(resp.Body)
+		var errResponse transport.JSONRPCResponse
+		if err := json.Unmarshal(body, &errResponse); err == nil {
+			return &errResponse, nil
+		}
+		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	if request.Method == string(mcp.MethodInitialize) {
+		// Save the received session ID in the response
+		if sessionID := resp.Header.Get(transport.HeaderKeySessionID); sessionID != "" {
+			t.sessionID.Store(sessionID)
+		}
+
+		t.initializedOnce.Do(func() {
+			close(t.initialized)
+		})
+	}
+
+	// Handle different response types
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	switch mediaType {
+	case "application/json":
+		// Single response
+		var response transport.JSONRPCResponse
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+
+		// Should not be a notification
+		if response.ID.IsNil() {
+			return nil, fmt.Errorf("response should contain RPC id: %v", response)
+		}
+
+		return &response, nil
+
+	case "text/event-stream":
+		// Server is using SSE for streaming responses
+		return t.handleSSEResponse(ctx, resp.Body, false)
+
+	default:
+		return nil, fmt.Errorf("unexpected content type: %s", resp.Header.Get("Content-Type"))
+	}
 }
 
-// sendHTTP sends an HTTP request with standard headers
-func (t *X402Transport) sendHTTP(ctx context.Context, method string, body io.Reader, extraHeaders map[string]string) (*http.Response, error) {
+// sendHTTP sends an HTTP request with standard headers (similar to StreamableHTTP)
+func (t *X402Transport) sendHTTP(ctx context.Context, method string, body io.Reader, acceptType string) (*http.Response, error) {
+	return t.sendHTTPWithHeaders(ctx, method, body, acceptType, nil)
+}
+
+// sendHTTPWithHeaders sends an HTTP request with custom headers (for x402 payments)
+func (t *X402Transport) sendHTTPWithHeaders(ctx context.Context, method string, body io.Reader, acceptType string, extraHeaders map[string]string) (*http.Response, error) {
+	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, method, t.serverURL.String(), body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set standard headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Accept", acceptType)
 
-	// Add session headers if available
-	if sessionID := t.sessionID.Load().(string); sessionID != "" {
-		req.Header.Set("X-Session-Id", sessionID)
+	sessionID := t.sessionID.Load().(string)
+	if sessionID != "" {
+		req.Header.Set(transport.HeaderKeySessionID, sessionID)
 	}
 
-	if version := t.protocolVersion.Load().(string); version != "" {
-		req.Header.Set("X-Protocol-Version", version)
+	// Set protocol version header if negotiated
+	if v := t.protocolVersion.Load(); v != nil {
+		if version, ok := v.(string); ok && version != "" {
+			req.Header.Set(transport.HeaderKeyProtocolVersion, version)
+		}
 	}
 
 	// Add extra headers (like X-PAYMENT)
@@ -248,7 +339,19 @@ func (t *X402Transport) sendHTTP(ctx context.Context, method string, body io.Rea
 		req.Header.Set(k, v)
 	}
 
-	return t.httpClient.Do(req)
+	// Send request
+	resp, err := t.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// Universal handling for session terminated
+	if resp.StatusCode == http.StatusNotFound {
+		t.sessionID.CompareAndSwap(sessionID, "")
+		return nil, ErrSessionTerminated
+	}
+
+	return resp, nil
 }
 
 // handleResponse processes HTTP responses (JSON or SSE)
@@ -278,59 +381,141 @@ func (t *X402Transport) handleResponse(ctx context.Context, resp *http.Response)
 		return &response, nil
 
 	case "text/event-stream":
-		return t.handleSSEResponse(ctx, resp.Body)
+		return t.handleSSEResponse(ctx, resp.Body, false)
 
 	default:
 		return nil, fmt.Errorf("unexpected content type: %s", mediaType)
 	}
 }
 
-// handleSSEResponse processes Server-Sent Events stream
-func (t *X402Transport) handleSSEResponse(ctx context.Context, reader io.ReadCloser) (*transport.JSONRPCResponse, error) {
-	defer reader.Close()
-
+// handleSSEResponse processes Server-Sent Events stream (similar to StreamableHTTP)
+func (t *X402Transport) handleSSEResponse(ctx context.Context, reader io.ReadCloser, ignoreResponse bool) (*transport.JSONRPCResponse, error) {
+	// Create a channel for this specific request
 	responseChan := make(chan *transport.JSONRPCResponse, 1)
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Start a goroutine to process the SSE stream
 	go func() {
+		// Ensure this goroutine respects the context
 		defer close(responseChan)
 
-		scanner := bufio.NewScanner(reader)
-		var data string
+		t.readSSE(ctx, reader, func(event, data string) {
+			// Try to unmarshal as a response first
+			var message transport.JSONRPCResponse
+			if err := json.Unmarshal([]byte(data), &message); err != nil {
+				// Silently ignore unmarshal errors for SSE events
+				return
+			}
 
-		for scanner.Scan() {
-			line := scanner.Text()
+			// Handle notification
+			if message.ID.IsNil() {
+				var notification mcp.JSONRPCNotification
+				if err := json.Unmarshal([]byte(data), &notification); err != nil {
+					return
+				}
+				t.notifyMu.RLock()
+				if t.notificationHandler != nil {
+					t.notificationHandler(notification)
+				}
+				t.notifyMu.RUnlock()
+				return
+			}
 
-			if strings.HasPrefix(line, "data:") {
-				data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			} else if line == "" && data != "" {
-				// Empty line means end of event
-				var response transport.JSONRPCResponse
-				if err := json.Unmarshal([]byte(data), &response); err == nil {
-					if !response.ID.IsNil() {
-						responseChan <- &response
+			// Check if this is actually a request from the server by looking for method field
+			var rawMessage map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(data), &rawMessage); err == nil {
+				if _, hasMethod := rawMessage["method"]; hasMethod && !message.ID.IsNil() {
+					var request transport.JSONRPCRequest
+					if err := json.Unmarshal([]byte(data), &request); err == nil {
+						// This is a request from the server
+						t.handleIncomingRequest(ctx, request)
 						return
 					}
-
-					// Handle notification
-					var notification mcp.JSONRPCNotification
-					if err := json.Unmarshal([]byte(data), &notification); err == nil {
-						t.notifyMu.RLock()
-						if t.notificationHandler != nil {
-							t.notificationHandler(notification)
-						}
-						t.notifyMu.RUnlock()
-					}
 				}
-				data = ""
 			}
-		}
+
+			if !ignoreResponse {
+				responseChan <- &message
+			}
+		})
 	}()
 
+	// Wait for the response or context cancellation
 	select {
 	case response := <-responseChan:
+		if response == nil {
+			return nil, fmt.Errorf("unexpected nil response")
+		}
 		return response, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+// readSSE reads the SSE stream and calls the handler for each event
+func (t *X402Transport) readSSE(ctx context.Context, reader io.ReadCloser, handler func(event, data string)) {
+	defer reader.Close()
+
+	br := bufio.NewReader(reader)
+	var event string
+	var dataLines []string
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			line, err := br.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					// Process any pending event before exit
+					if len(dataLines) > 0 {
+						// If no event type is specified, use "message" (default event type)
+						if event == "" {
+							event = "message"
+						}
+						handler(event, strings.Join(dataLines, "\n"))
+					}
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					return
+				}
+			}
+
+			// Remove only newline markers
+			line = strings.TrimRight(line, "\r\n")
+			if line == "" {
+				// Empty line means end of event
+				if len(dataLines) > 0 {
+					// If no event type is specified, use "message" (default event type)
+					if event == "" {
+						event = "message"
+					}
+					handler(event, strings.Join(dataLines, "\n"))
+					event = ""
+					dataLines = nil
+				}
+				continue
+			}
+
+			if strings.HasPrefix(line, "event:") {
+				event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			} else if strings.HasPrefix(line, "data:") {
+				// Append data lines (SSE can have multiple data: lines per event)
+				dataLine := strings.TrimPrefix(line, "data:")
+				// Only trim leading space, preserve trailing spaces
+				if len(dataLine) > 0 && dataLine[0] == ' ' {
+					dataLine = dataLine[1:]
+				}
+				dataLines = append(dataLines, dataLine)
+			}
+		}
 	}
 }
 
@@ -341,9 +526,12 @@ func (t *X402Transport) SendNotification(ctx context.Context, notification mcp.J
 		return fmt.Errorf("failed to marshal notification: %w", err)
 	}
 
-	resp, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(notificationBody), nil)
+	ctx, cancel := t.contextAwareOfClientClose(ctx)
+	defer cancel()
+
+	resp, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(notificationBody), "application/json, text/event-stream")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -371,7 +559,7 @@ func (t *X402Transport) SendNotification(ctx context.Context, notification mcp.J
 			"X-PAYMENT": payment.Encode(),
 		}
 
-		resp2, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(notificationBody), headers)
+		resp2, err := t.sendHTTPWithHeaders(ctx, http.MethodPost, bytes.NewReader(notificationBody), "application/json, text/event-stream", headers)
 		if err != nil {
 			return err
 		}
@@ -487,4 +675,97 @@ func WithPaymentRecorder(recorder *PaymentRecorder) func(*X402Transport) {
 	return func(t *X402Transport) {
 		t.paymentRecorder = recorder
 	}
+}
+
+// contextAwareOfClientClose creates a context that is canceled when client closes
+func (t *X402Transport) contextAwareOfClientClose(ctx context.Context) (context.Context, context.CancelFunc) {
+	newCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-t.closed:
+			cancel()
+		case <-newCtx.Done():
+			// The original context was canceled
+			cancel()
+		}
+	}()
+	return newCtx, cancel
+}
+
+// handleIncomingRequest processes requests from the server (like sampling requests)
+func (t *X402Transport) handleIncomingRequest(ctx context.Context, request transport.JSONRPCRequest) {
+	t.requestMu.RLock()
+	handler := t.requestHandler
+	t.requestMu.RUnlock()
+
+	if handler == nil {
+		// Send method not found error
+		errorResponse := &transport.JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      request.ID,
+			Error: &struct {
+				Code    int             `json:"code"`
+				Message string          `json:"message"`
+				Data    json.RawMessage `json:"data"`
+			}{
+				Code:    mcp.METHOD_NOT_FOUND,
+				Message: fmt.Sprintf("no handler configured for method: %s", request.Method),
+			},
+		}
+		t.sendResponseToServer(ctx, errorResponse)
+		return
+	}
+
+	// Handle the request in a goroutine to avoid blocking the SSE reader
+	go func() {
+		// Create a new context with timeout for request handling
+		requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		response, err := handler(requestCtx, request)
+		if err != nil {
+			// Send error response
+			errorResponse := &transport.JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      request.ID,
+				Error: &struct {
+					Code    int             `json:"code"`
+					Message string          `json:"message"`
+					Data    json.RawMessage `json:"data"`
+				}{
+					Code:    mcp.INTERNAL_ERROR,
+					Message: err.Error(),
+				},
+			}
+			t.sendResponseToServer(requestCtx, errorResponse)
+			return
+		}
+
+		if response != nil {
+			t.sendResponseToServer(requestCtx, response)
+		}
+	}()
+}
+
+// sendResponseToServer sends a response back to the server via HTTP POST
+func (t *X402Transport) sendResponseToServer(ctx context.Context, response *transport.JSONRPCResponse) {
+	if response == nil {
+		return
+	}
+
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		return
+	}
+
+	ctx, cancel := t.contextAwareOfClientClose(ctx)
+	defer cancel()
+
+	resp, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(responseBody), "application/json, text/event-stream")
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	// We don't need to process the response for a response message
 }

@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 
+	x402 "github.com/mark3labs/mcp-go-x402"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
-	x402 "github.com/yourusername/mcp-go-x402"
 )
 
 func main() {
@@ -19,7 +19,7 @@ func main() {
 
 	serverURL := os.Getenv("MCP_SERVER_URL")
 	if serverURL == "" {
-		serverURL = "https://paid-mcp-server.example.com"
+		serverURL = "https://mcpay.tech/mcp/a9ad1af3-f91a-468c-96e4-28ebdfdd36c3"
 	}
 
 	// Create signer with your private key
@@ -31,7 +31,7 @@ func main() {
 	log.Printf("Using wallet address: %s", signer.GetAddress())
 
 	// Create x402 transport
-	transport, err := x402.New(x402.Config{
+	x402transport, err := x402.New(x402.Config{
 		ServerURL:        serverURL,
 		Signer:           signer,
 		MaxPaymentAmount: "1000000", // 1 USDC max per request
@@ -52,7 +52,7 @@ func main() {
 	}
 
 	// Create MCP client with x402 transport
-	mcpClient := client.NewClient(transport)
+	mcpClient := client.NewClient(x402transport)
 
 	ctx := context.Background()
 	if err := mcpClient.Start(ctx); err != nil {
@@ -77,32 +77,26 @@ func main() {
 	log.Printf("Connected to server: %s v%s",
 		initResp.ServerInfo.Name, initResp.ServerInfo.Version)
 
-	// List available tools
-	toolsResp, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+	// Call the search tool
+	log.Println("Searching for 'x402'...")
+	searchResp, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "search",
+			Arguments: map[string]any{
+				"query":       "x402",
+				"max_results": 5,
+			},
+		},
+	})
+
 	if err != nil {
-		log.Printf("Failed to list tools: %v", err)
-	} else {
-		log.Printf("Found %d tools:", len(toolsResp.Tools))
-		for _, tool := range toolsResp.Tools {
-			log.Printf("  - %s: %s", tool.Name, tool.Description)
-		}
+		log.Fatalf("Search failed: %v", err)
 	}
 
-	// List available resources
-	resourcesResp, err := mcpClient.ListResources(ctx, mcp.ListResourcesRequest{})
-	if err != nil {
-		log.Printf("Failed to list resources: %v", err)
-	} else {
-		log.Printf("Found %d resources:", len(resourcesResp.Resources))
-		for _, resource := range resourcesResp.Resources {
-			log.Printf("  - %s: %s", resource.URI, resource.Name)
+	log.Println("Search results:")
+	if len(searchResp.Content) > 0 {
+		if textContent, ok := mcp.AsTextContent(searchResp.Content[0]); ok {
+			log.Println(textContent.Text)
 		}
 	}
-
-	// Get payment metrics
-	metrics := transport.GetMetrics()
-	log.Printf("Payment metrics:")
-	log.Printf("  Total spent: %s", metrics.TotalSpent)
-	log.Printf("  Hourly spent: %s", metrics.HourlySpent)
-	log.Printf("  Payment count: %d", metrics.PaymentCount)
 }
