@@ -3,7 +3,6 @@ package server
 // PaymentRequirement defines payment requirements for a resource/tool
 // as defined in the x402 specification section 5.1
 type PaymentRequirement struct {
-	X402Version       int               `json:"x402Version"`
 	Scheme            string            `json:"scheme"`
 	Network           string            `json:"network"`
 	MaxAmountRequired string            `json:"maxAmountRequired"`
@@ -11,10 +10,10 @@ type PaymentRequirement struct {
 	PayTo             string            `json:"payTo"`
 	Resource          string            `json:"resource"`
 	Description       string            `json:"description"`
-	MimeType          string            `json:"mimeType,omitempty"`
+	MimeType          string            `json:"mimeType"`
 	OutputSchema      any               `json:"outputSchema,omitempty"`
 	MaxTimeoutSeconds int               `json:"maxTimeoutSeconds"`
-	Extra             map[string]string `json:"extra,omitempty"` // Changed to map[string]string for consistency with client
+	Extra             map[string]string `json:"extra,omitempty"`
 }
 
 // PaymentRequirements402Response is the HTTP 402 response body
@@ -56,7 +55,6 @@ type SettlementResponse struct {
 // VerifyRequest sent to facilitator /verify endpoint
 // as defined in the x402 specification section 7.1
 type VerifyRequest struct {
-	X402Version         int                 `json:"x402Version"`
 	PaymentPayload      *PaymentPayload     `json:"paymentPayload"`
 	PaymentRequirements *PaymentRequirement `json:"paymentRequirements"`
 }
@@ -72,7 +70,6 @@ type VerifyResponse struct {
 // SettleRequest sent to facilitator /settle endpoint
 // as defined in the x402 specification section 7.2
 type SettleRequest struct {
-	X402Version         int                 `json:"x402Version"`
 	PaymentPayload      *PaymentPayload     `json:"paymentPayload"`
 	PaymentRequirements *PaymentRequirement `json:"paymentRequirements"`
 }

@@ -69,7 +69,6 @@ func (s *X402Server) AddPayableTool(
 
 	// Create payment requirement
 	requirement := &PaymentRequirement{
-		X402Version:       1,
 		Scheme:            "exact",
 		Network:           s.config.DefaultNetwork,
 		MaxAmountRequired: amountInAtomicUnits,

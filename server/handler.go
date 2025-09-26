@@ -77,9 +77,6 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if reqCopy.MimeType == "" {
 		reqCopy.MimeType = "application/json"
 	}
-	if reqCopy.X402Version == 0 {
-		reqCopy.X402Version = 1
-	}
 	requirement = &reqCopy
 
 	// Check for payment header
@@ -157,9 +154,6 @@ func (h *X402Handler) send402Response(w http.ResponseWriter, requirement *Paymen
 	// Ensure required fields are set
 	if reqCopy.MimeType == "" {
 		reqCopy.MimeType = "application/json"
-	}
-	if reqCopy.X402Version == 0 {
-		reqCopy.X402Version = 1
 	}
 
 	response := PaymentRequirements402Response{
