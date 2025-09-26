@@ -71,6 +71,14 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Make a copy of the requirement and ensure all required fields are set
+	reqCopy := *requirement
+	reqCopy.Resource = fmt.Sprintf("mcp://tools/%s", mcpReq.Params.Name)
+	if reqCopy.MimeType == "" {
+		reqCopy.MimeType = "application/json"
+	}
+	requirement = &reqCopy
+
 	// Check for payment header
 	paymentHeader := r.Header.Get("X-PAYMENT")
 	if paymentHeader == "" {
@@ -139,13 +147,19 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *X402Handler) send402Response(w http.ResponseWriter, requirement *PaymentRequirement, toolName string) {
-	// Construct full resource URL
-	requirement.Resource = fmt.Sprintf("mcp://tools/%s", toolName)
+	// Make a copy of the requirement and set the resource URL
+	reqCopy := *requirement
+	reqCopy.Resource = fmt.Sprintf("mcp://tools/%s", toolName)
+
+	// Ensure mimeType is set
+	if reqCopy.MimeType == "" {
+		reqCopy.MimeType = "application/json"
+	}
 
 	response := PaymentRequirements402Response{
 		X402Version: 1,
 		Error:       "X-PAYMENT header is required",
-		Accepts:     []PaymentRequirement{*requirement},
+		Accepts:     []PaymentRequirement{reqCopy},
 	}
 
 	w.Header().Set("Content-Type", "application/json")

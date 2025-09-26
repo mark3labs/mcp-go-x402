@@ -75,6 +75,7 @@ func (s *X402Server) AddPayableTool(
 		Asset:             s.config.DefaultAsset,
 		PayTo:             s.config.DefaultPayTo,
 		Description:       description,
+		MimeType:          "application/json",
 		MaxTimeoutSeconds: 60,
 	}
 
