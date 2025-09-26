@@ -16,7 +16,7 @@ This library provides a transport implementation that adds [x402 protocol](https
 ## Installation
 
 ```bash
-go get github.com/yourusername/mcp-go-x402
+go get github.com/mark3labs/mcp-go-x402
 ```
 
 ## Quick Start
@@ -30,7 +30,7 @@ import (
     
     "github.com/mark3labs/mcp-go/client"
     "github.com/mark3labs/mcp-go/mcp"
-    x402 "github.com/yourusername/mcp-go-x402"
+    x402 "github.com/mark3labs/mcp-go-x402"
 )
 
 func main() {
@@ -62,10 +62,12 @@ func main() {
     
     // Initialize MCP session
     _, err = mcpClient.Initialize(ctx, mcp.InitializeRequest{
-        ProtocolVersion: "1.0.0",
-        ClientInfo: mcp.ClientInfo{
-            Name:    "x402-client",
-            Version: "1.0.0",
+        Params: mcp.InitializeParams{
+            ProtocolVersion: "1.0.0",
+            ClientInfo: mcp.Implementation{
+                Name:    "x402-client",
+                Version: "1.0.0",
+            },
         },
     })
     if err != nil {
@@ -213,20 +215,26 @@ func TestMyMCPClient(t *testing.T) {
 
 ```go
 func TestPaymentFlow(t *testing.T) {
+    // Create mock signer and recorder
+    signer := x402.NewMockSigner("0xTestWallet")
     recorder := x402.NewPaymentRecorder()
     
     transport, _ := x402.New(x402.Config{
-        ServerURL: testServer.URL,
-        Signer:    x402.NewMockSigner("0xTest"),
+        ServerURL:        testServer.URL,
+        Signer:           signer,
+        MaxPaymentAmount: "10000",
+        AutoPayThreshold: "5000",
     })
     
+    // Attach the recorder using the helper function
     x402.WithPaymentRecorder(recorder)(transport)
     
     // Make requests...
     
     // Verify payments
-    assert.Equal(t, 2, recorder.PaymentCount())
-    assert.Equal(t, "10000", recorder.LastPayment().Amount.String())
+    assert.Equal(t, 2, recorder.PaymentCount()) // Attempt + Success events
+    lastPayment := recorder.LastPayment()
+    assert.Equal(t, x402.PaymentEventSuccess, lastPayment.Type)
     assert.Equal(t, "20000", recorder.TotalAmount())
 }
 ```
@@ -252,8 +260,6 @@ func TestPaymentFlow(t *testing.T) {
 See the [examples](./examples) directory for more detailed examples:
 
 - [Basic Usage](./examples/basic/main.go) - Simple payment setup
-- [With Budget](./examples/with_budget/main.go) - Budget and rate limiting
-- [Custom Signer](./examples/custom_signer/main.go) - Hardware wallet integration
 
 ## Roadmap
 
