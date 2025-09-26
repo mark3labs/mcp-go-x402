@@ -34,11 +34,15 @@ func main() {
 		network = "base" // Base mainnet
 	}
 
+	// Check if we should verify only (not settle)
+	verifyOnly := os.Getenv("X402_VERIFY_ONLY") == "true"
+
 	config := &x402server.Config{
 		FacilitatorURL: facilitatorURL,
 		DefaultPayTo:   payTo,
 		DefaultAsset:   asset,
 		DefaultNetwork: network,
+		VerifyOnly:     verifyOnly,
 	}
 
 	// Create x402 server
@@ -68,10 +72,14 @@ func main() {
 	log.Printf("Payment recipient: %s", payTo)
 	log.Printf("Asset: %s", asset)
 	log.Printf("Network: %s", network)
+	log.Printf("Verify Only Mode: %v", verifyOnly)
 	log.Println("Tool: search (0.01 USDC per query)")
 	log.Println("")
 	log.Println("Connect with client using:")
 	log.Printf("  export MCP_SERVER_URL=http://localhost:%s", port)
+	if verifyOnly {
+		log.Println("  (Running in verify-only mode - payments will be verified but not settled)")
+	}
 
 	if err := srv.Start(":" + port); err != nil {
 		log.Fatal(err)

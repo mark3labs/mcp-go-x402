@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -50,6 +51,10 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 		return nil, fmt.Errorf("marshal verify request: %w", err)
 	}
 
+	// Debug logging
+	fmt.Printf("Sending verify request to %s/verify\n", f.baseURL)
+	fmt.Printf("Request body: %s\n", string(body))
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", f.baseURL+"/verify", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create verify request: %w", err)
@@ -63,7 +68,9 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("verify failed with status %d", resp.StatusCode)
+		// Try to read error response
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("verify failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var verifyResp VerifyResponse
@@ -98,7 +105,9 @@ func (f *HTTPFacilitator) Settle(ctx context.Context, payment *PaymentPayload, r
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("settle failed with status %d", resp.StatusCode)
+		// Try to read error response
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("settle failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var settleResp SettleResponse

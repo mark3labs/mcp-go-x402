@@ -81,18 +81,33 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Decode and verify payment
 	payment, err := h.decodePaymentHeader(paymentHeader)
 	if err != nil {
+		fmt.Printf("Failed to decode payment header: %v\n", err)
 		http.Error(w, "Invalid payment header", http.StatusBadRequest)
 		return
 	}
 
+	// Log payment details for debugging
+	fmt.Printf("Received payment for tool '%s':\n", mcpReq.Params.Name)
+	fmt.Printf("  From: %s\n", payment.Payload.Authorization.From)
+	fmt.Printf("  To: %s\n", payment.Payload.Authorization.To)
+	fmt.Printf("  Value: %s\n", payment.Payload.Authorization.Value)
+	fmt.Printf("  Network: %s\n", payment.Network)
+
 	// Verify payment with facilitator
 	ctx := r.Context()
 	verifyResp, err := h.facilitator.Verify(ctx, payment, requirement)
-	if err != nil || !verifyResp.IsValid {
+	if err != nil {
+		// Log the actual error for debugging
+		fmt.Printf("Facilitator verification error: %v\n", err)
+		http.Error(w, fmt.Sprintf("Payment verification failed: %v", err), http.StatusBadRequest)
+		return
+	}
+	if !verifyResp.IsValid {
 		errorMsg := "Payment verification failed"
-		if verifyResp != nil && verifyResp.InvalidReason != "" {
-			errorMsg = verifyResp.InvalidReason
+		if verifyResp.InvalidReason != "" {
+			errorMsg = fmt.Sprintf("Payment verification failed: %s", verifyResp.InvalidReason)
 		}
+		fmt.Printf("Payment invalid: %s\n", errorMsg)
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
 	}
