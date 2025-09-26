@@ -44,7 +44,7 @@ jobs:
                   },
                   {
                     \"name\": \"Repository\",
-                    \"value\": \"[mcp-go](https://github.com/${{ github.repository }})\",
+                    \"value\": \"[mcp-go-x402](https://github.com/${{ github.repository }})\",
                     \"inline\": true
                   }
                 ],
