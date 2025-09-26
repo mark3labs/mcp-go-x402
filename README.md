@@ -1,6 +1,6 @@
 # mcp-go-x402
 
-X402 payment protocol support for [MCP-Go](https://github.com/mark3labs/mcp-go) clients and servers.
+x402 payment protocol support for [MCP-Go](https://github.com/mark3labs/mcp-go) clients and servers.
 
 This library provides:
 - **Client Transport**: Automatic x402 payment handling for MCP clients

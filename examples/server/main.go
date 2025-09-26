@@ -60,6 +60,15 @@ func main() {
 		"Premium search service - provides high-quality search results",
 	)
 
+	// Add a free echo tool to demonstrate non-paid tools
+	srv.AddTool(
+		mcp.NewTool("echo",
+			mcp.WithDescription("Simple echo tool that returns the input message"),
+			mcp.WithString("message", mcp.Required(), mcp.Description("The message to echo back")),
+		),
+		echoHandler,
+	)
+
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -73,7 +82,9 @@ func main() {
 	log.Printf("Asset: %s", asset)
 	log.Printf("Network: %s", network)
 	log.Printf("Verify Only Mode: %v", verifyOnly)
-	log.Println("Tool: search (0.01 USDC per query)")
+	log.Println("Tools:")
+	log.Println("  - search (0.01 USDC per query)")
+	log.Println("  - echo (free)")
 	log.Println("")
 	log.Println("Connect with client using:")
 	log.Printf("  export MCP_SERVER_URL=http://localhost:%s", port)
@@ -119,6 +130,23 @@ Showing top %.0f results`,
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.NewTextContent(results),
+		},
+	}, nil
+}
+
+func echoHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	message := request.GetString("message", "")
+
+	if message == "" {
+		return nil, fmt.Errorf("message parameter is required")
+	}
+
+	// Simply echo back the message
+	response := fmt.Sprintf("Echo: %s", message)
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.NewTextContent(response),
 		},
 	}, nil
 }

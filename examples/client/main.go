@@ -19,7 +19,7 @@ func main() {
 
 	serverURL := os.Getenv("MCP_SERVER_URL")
 	if serverURL == "" {
-		serverURL = "https://mcpay.tech/mcp/a9ad1af3-f91a-468c-96e4-28ebdfdd36c3"
+		serverURL = "http://localhost:8080"
 	}
 
 	// Create signer with your private key
@@ -77,8 +77,42 @@ func main() {
 	log.Printf("Connected to server: %s v%s",
 		initResp.ServerInfo.Name, initResp.ServerInfo.Version)
 
-	// Call the search tool
-	log.Println("Searching for 'x402'...")
+	// List all available tools
+	log.Println("\nListing available tools...")
+	toolsResp, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		log.Printf("Failed to list tools: %v", err)
+	} else {
+		log.Println("Available tools:")
+		for _, tool := range toolsResp.Tools {
+			log.Printf("  - %s: %s", tool.Name, tool.Description)
+		}
+	}
+
+	// Call the free echo tool first
+	log.Println("\nCalling echo tool (free)...")
+	echoResp, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "echo",
+			Arguments: map[string]any{
+				"message": "Hello from x402 client!",
+			},
+		},
+	})
+
+	if err != nil {
+		log.Printf("Echo failed: %v", err)
+	} else {
+		log.Println("Echo response:")
+		if len(echoResp.Content) > 0 {
+			if textContent, ok := mcp.AsTextContent(echoResp.Content[0]); ok {
+				log.Println(textContent.Text)
+			}
+		}
+	}
+
+	// Call the search tool (paid)
+	log.Println("\nSearching for 'x402' (paid tool)...")
 	searchResp, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "search",
