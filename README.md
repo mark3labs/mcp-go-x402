@@ -255,6 +255,11 @@ See the [examples](./examples) directory for more detailed examples:
 - [With Budget](./examples/with_budget/main.go) - Budget and rate limiting
 - [Custom Signer](./examples/custom_signer/main.go) - Hardware wallet integration
 
+## Roadmap
+
+- ✅ **MCP Client** - Complete support for x402 payments in MCP clients
+- ⏳ **MCP Server** - TODO: Add x402 payment collection support for MCP servers
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
