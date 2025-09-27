@@ -65,24 +65,24 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if this tool requires payment
-	requirement, needsPayment := h.config.PaymentTools[mcpReq.Params.Name]
+	requirements, needsPayment := h.config.PaymentTools[mcpReq.Params.Name]
 	if !needsPayment {
 		h.mcpHandler.ServeHTTP(w, r)
 		return
 	}
 
-	// Make a copy of the requirement and ensure all required fields are set
-	reqCopy := *requirement
-	reqCopy.Resource = fmt.Sprintf("mcp://tools/%s", mcpReq.Params.Name)
-	if reqCopy.MimeType == "" {
-		reqCopy.MimeType = "application/json"
+	// Ensure all requirements have proper fields set
+	for i := range requirements {
+		requirements[i].Resource = fmt.Sprintf("mcp://tools/%s", mcpReq.Params.Name)
+		if requirements[i].MimeType == "" {
+			requirements[i].MimeType = "application/json"
+		}
 	}
-	requirement = &reqCopy
 
 	// Check for payment header
 	paymentHeader := r.Header.Get("X-PAYMENT")
 	if paymentHeader == "" {
-		h.send402Response(w, requirement, mcpReq.Params.Name)
+		h.send402Response(w, requirements, mcpReq.Params.Name)
 		return
 	}
 
@@ -91,6 +91,13 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("Failed to decode payment header: %v\n", err)
 		http.Error(w, "Invalid payment header", http.StatusBadRequest)
+		return
+	}
+
+	// Find matching requirement for the payment
+	requirement, err := h.findMatchingRequirement(payment, requirements)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Payment does not match any accepted options: %v", err), http.StatusBadRequest)
 		return
 	}
 
@@ -127,7 +134,7 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		settleResp = &SettleResponse{
 			Success:     true,
 			Transaction: "verify-only-mode",
-			Network:     h.config.DefaultNetwork,
+			Network:     payment.Network,
 			Payer:       verifyResp.Payer,
 		}
 	}
@@ -136,25 +143,52 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.forwardWithPaymentResponse(w, r, settleResp.Transaction, verifyResp.Payer)
 }
 
-func (h *X402Handler) send402Response(w http.ResponseWriter, requirement *PaymentRequirement, toolName string) {
-	// Make a copy of the requirement and set the resource URL
-	reqCopy := *requirement
-	reqCopy.Resource = fmt.Sprintf("mcp://tools/%s", toolName)
-
-	// Ensure required fields are set
-	if reqCopy.MimeType == "" {
-		reqCopy.MimeType = "application/json"
+func (h *X402Handler) send402Response(w http.ResponseWriter, requirements []PaymentRequirement, toolName string) {
+	// Ensure all requirements have proper fields set
+	for i := range requirements {
+		requirements[i].Resource = fmt.Sprintf("mcp://tools/%s", toolName)
+		if requirements[i].MimeType == "" {
+			requirements[i].MimeType = "application/json"
+		}
 	}
 
 	response := PaymentRequirements402Response{
 		X402Version: 1,
 		Error:       "X-PAYMENT header is required",
-		Accepts:     []PaymentRequirement{reqCopy},
+		Accepts:     requirements,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusPaymentRequired)
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+// findMatchingRequirement finds the payment requirement that matches the provided payment
+func (h *X402Handler) findMatchingRequirement(payment *PaymentPayload, requirements []PaymentRequirement) (*PaymentRequirement, error) {
+	for i := range requirements {
+		req := &requirements[i]
+
+		// Check if network matches
+		if req.Network != "" && req.Network != payment.Network {
+			continue
+		}
+
+		// Check if scheme matches
+		if req.Scheme != "" && req.Scheme != payment.Scheme {
+			continue
+		}
+
+		// Check if asset matches (from payment authorization)
+		if req.Asset != "" && req.Asset != payment.Payload.Authorization.To {
+			continue
+		}
+
+		// Found a matching requirement
+		return req, nil
+	}
+
+	return nil, fmt.Errorf("no matching payment requirement found for network=%s, scheme=%s",
+		payment.Network, payment.Scheme)
 }
 
 func (h *X402Handler) decodePaymentHeader(header string) (*PaymentPayload, error) {
@@ -191,7 +225,7 @@ func (h *X402Handler) forwardWithPaymentResponse(w http.ResponseWriter, r *http.
 		paymentResp := SettlementResponse{
 			Success:     true,
 			Transaction: transaction,
-			Network:     h.config.DefaultNetwork,
+			Network:     "", // Network is determined by the payment itself
 			Payer:       payer,
 		}
 

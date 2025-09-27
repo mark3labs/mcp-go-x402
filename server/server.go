@@ -57,58 +57,25 @@ func (s *X402Server) AddTool(tool mcp.Tool, handler server.ToolHandlerFunc) {
 	s.mcpServer.AddTool(tool, handler)
 }
 
-// AddPayableTool adds a tool that requires payment
+// AddPayableTool adds a tool that requires payment with one or more payment options
 func (s *X402Server) AddPayableTool(
 	tool mcp.Tool,
 	handler server.ToolHandlerFunc,
-	amountInAtomicUnits string,
-	description string,
+	requirements ...PaymentRequirement,
 ) {
 	// Add tool to MCP server
 	s.mcpServer.AddTool(tool, handler)
 
-	// Create payment requirement
-	requirement := &PaymentRequirement{
-		Scheme:            "exact",
-		Network:           s.config.DefaultNetwork,
-		MaxAmountRequired: amountInAtomicUnits,
-		Asset:             s.config.DefaultAsset,
-		PayTo:             s.config.DefaultPayTo,
-		Description:       description,
-		MimeType:          "application/json",
-		MaxTimeoutSeconds: 60,
+	// Validate we have at least one requirement
+	if len(requirements) == 0 {
+		panic(fmt.Sprintf("tool %s requires at least one payment requirement", tool.Name))
 	}
 
-	// Set EIP-712 parameters for USDC
-	// The client needs these to properly sign the payment
-	if s.config.DefaultAsset != "" {
-		requirement.Extra = map[string]string{
-			"name":    "USD Coin", // EIP-712 domain name for USDC
-			"version": "2",
-		}
-	}
-
-	// Register payment requirement
+	// Register payment requirements
 	if s.config.PaymentTools == nil {
-		s.config.PaymentTools = make(map[string]*PaymentRequirement)
+		s.config.PaymentTools = make(map[string][]PaymentRequirement)
 	}
-	s.config.PaymentTools[tool.Name] = requirement
-}
-
-// AddPayableToolWithRequirement adds a tool with custom payment requirements
-func (s *X402Server) AddPayableToolWithRequirement(
-	tool mcp.Tool,
-	handler server.ToolHandlerFunc,
-	requirement *PaymentRequirement,
-) {
-	// Add tool to MCP server
-	s.mcpServer.AddTool(tool, handler)
-
-	// Register payment requirement
-	if s.config.PaymentTools == nil {
-		s.config.PaymentTools = make(map[string]*PaymentRequirement)
-	}
-	s.config.PaymentTools[tool.Name] = requirement
+	s.config.PaymentTools[tool.Name] = requirements
 }
 
 // Handler returns the http.Handler for the x402 server

@@ -94,16 +94,8 @@ type Config struct {
 	FacilitatorURL string
 
 	// PaymentTools maps tool names to their payment requirements
-	PaymentTools map[string]*PaymentRequirement
-
-	// DefaultPayTo is the default recipient address for payments
-	DefaultPayTo string
-
-	// DefaultAsset is the default token contract address (e.g., USDC)
-	DefaultAsset string
-
-	// DefaultNetwork is the default blockchain network
-	DefaultNetwork string
+	// Each tool can have multiple payment options
+	PaymentTools map[string][]PaymentRequirement
 
 	// VerifyOnly if true, only verifies but doesn't settle payments
 	VerifyOnly bool

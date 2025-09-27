@@ -110,9 +110,7 @@ func main() {
     // Configure x402 server
     config := &x402server.Config{
         FacilitatorURL:  "https://facilitator.x402.rs",
-        DefaultPayTo:    "0xYourWallet",
-        DefaultAsset:    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
-        DefaultNetwork:  "base",
+        VerifyOnly:      false, // Set to true for testing without settlement
     }
     
     // Create x402 server
@@ -125,14 +123,32 @@ func main() {
         freeToolHandler,
     )
     
-    // Add a paid tool (0.01 USDC per call)
+    // Add a paid tool with multiple payment options
     srv.AddPayableTool(
         mcp.NewTool("premium-tool",
             mcp.WithDescription("Premium feature"),
             mcp.WithString("input", mcp.Required())),
         premiumToolHandler,
-        "10000", // 0.01 USDC (6 decimals)
-        "Access to premium feature",
+        // Option 1: Pay with USDC on Ethereum
+        x402server.PaymentRequirement{
+            Scheme:            "eip3009",
+            Network:           "ethereum-mainnet",
+            Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            PayTo:             "0xYourWallet",
+            MaxAmountRequired: "10000", // 0.01 USDC
+            Description:       "Premium feature via Ethereum",
+            MaxTimeoutSeconds: 60,
+        },
+        // Option 2: Pay with USDC on Base (discounted)
+        x402server.PaymentRequirement{
+            Scheme:            "eip3009",
+            Network:           "base-mainnet",
+            Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            PayTo:             "0xYourWallet",
+            MaxAmountRequired: "5000", // 0.005 USDC (50% discount)
+            Description:       "Premium feature via Base (50% off)",
+            MaxTimeoutSeconds: 60,
+        },
     )
     
     // Start server
@@ -226,33 +242,54 @@ config := x402.Config{
 ```go
 config := &x402server.Config{
     FacilitatorURL:  "https://facilitator.x402.rs",
-    DefaultPayTo:    "0xYourWallet",
-    DefaultAsset:    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
-    DefaultNetwork:  "base",
     VerifyOnly:      false, // Set to true for testing without settlement
 }
 ```
 
-### Custom Payment Requirements
+### Multiple Payment Options
+
+Servers can now offer multiple payment options per tool, allowing clients to choose their preferred network or take advantage of discounts:
 
 ```go
-// Add tool with custom payment requirements
-customReq := &x402server.PaymentRequirement{
-    Scheme:            "exact",
-    Network:           "base",
-    MaxAmountRequired: "50000", // 0.05 USDC
-    Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    PayTo:             "0xYourWallet",
-    Description:       "Advanced processing",
-    MimeType:          "application/json",
-    MaxTimeoutSeconds: 120,
-    Extra: map[string]string{
-        "name":    "USD Coin",  // EIP-712 domain name for USDC
-        "version": "2",
+srv.AddPayableTool(
+    mcp.NewTool("analytics",
+        mcp.WithDescription("Advanced analytics"),
+        mcp.WithString("query", mcp.Required())),
+    analyticsHandler,
+    // Ethereum mainnet - standard price
+    x402server.PaymentRequirement{
+        Scheme:            "eip3009",
+        Network:           "ethereum-mainnet",
+        Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        PayTo:             "0xYourWallet",
+        MaxAmountRequired: "100000", // 0.1 USDC
+        Description:       "Analytics via Ethereum",
     },
-}
+    // Polygon - same price, lower gas fees
+    x402server.PaymentRequirement{
+        Scheme:            "eip3009",
+        Network:           "polygon-mainnet",
+        Asset:             "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
+        PayTo:             "0xYourWallet",
+        MaxAmountRequired: "100000", // 0.1 USDC
+        Description:       "Analytics via Polygon (lower fees)",
+    },
+    // Base - discounted price
+    x402server.PaymentRequirement{
+        Scheme:            "eip3009",
+        Network:           "base-mainnet",
+        Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+        PayTo:             "0xYourWallet",
+        MaxAmountRequired: "50000", // 0.05 USDC (50% discount)
+        Description:       "Analytics via Base (50% discount)",
+    },
+)
+```
 
-srv.AddPayableToolWithRequirement(tool, handler, customReq)
+When a client requests a paid tool without payment, they receive all available payment options and can choose the one that works best for them based on:
+- Network preference (gas fees, speed)
+- Available balance on different chains
+- Price differences (discounts for certain networks)
 ```
 
 ### Using with Existing MCP Server
