@@ -16,17 +16,14 @@ This example demonstrates how to create an MCP server that requires x402 payment
 # Build the server
 go build -o server
 
-# Run with default configuration
-./server
-
-# Run with custom payment recipient
+# Run with your wallet address (required)
 ./server -pay-to 0xYourWalletAddress
 
 # Enable testnet tools
-./server -testnet
+./server -pay-to 0xYourWallet -testnet
 
-# Run in verify-only mode (for testing)
-./server -verify-only
+# Run in verify-only mode (for testing without settlement)
+./server -pay-to 0xTestWallet -verify-only
 ```
 
 ## Command-line Flags
@@ -40,7 +37,7 @@ Flags:
   -facilitator string
         x402 facilitator URL (default "https://facilitator.x402.rs")
   -pay-to string
-        Payment recipient wallet address (default "0x209693Bc6afc0C5328bA36FaF03C514EF312287C")
+        Payment recipient wallet address (required)
   -verify-only
         Only verify payments, don't settle on-chain
   -testnet
@@ -66,6 +63,29 @@ The server internally handles `/mcp` and other MCP protocol routes.
 - **test-feature** - Test feature for development
   - Cost: 0.001 USDC on Base Sepolia
   - Parameters: `input` (string, required)
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Start server with payment recipient
+./server -pay-to 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1
+```
+
+### Development Setup
+
+```bash
+# Testnet with verify-only mode (no real settlement)
+./server -pay-to 0xTestWallet -testnet -verify-only -port 3000
+```
+
+### Production Setup
+
+```bash
+# Production with real wallet
+./server -pay-to 0xYourProductionWallet -facilitator https://facilitator.production.com
+```
 
 ## Testing the Server
 

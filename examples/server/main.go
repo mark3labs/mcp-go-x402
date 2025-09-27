@@ -15,11 +15,16 @@ func main() {
 	var (
 		port           = flag.String("port", "8080", "Port to listen on")
 		facilitatorURL = flag.String("facilitator", "https://facilitator.x402.rs", "x402 facilitator URL")
-		payTo          = flag.String("pay-to", "0x209693Bc6afc0C5328bA36FaF03C514EF312287C", "Payment recipient wallet address")
+		payTo          = flag.String("pay-to", "", "Payment recipient wallet address (required)")
 		verifyOnly     = flag.Bool("verify-only", false, "Only verify payments, don't settle on-chain")
 		testnet        = flag.Bool("testnet", false, "Enable testnet payment options")
 	)
 	flag.Parse()
+
+	// Check required flags
+	if *payTo == "" {
+		log.Fatal("Error: -pay-to flag is required. Please provide a wallet address to receive payments.")
+	}
 
 	config := &x402server.Config{
 		FacilitatorURL: *facilitatorURL,
