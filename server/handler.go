@@ -178,10 +178,11 @@ func (h *X402Handler) findMatchingRequirement(payment *PaymentPayload, requireme
 			continue
 		}
 
-		// Check if asset matches (from payment authorization)
-		if req.Asset != "" && req.Asset != payment.Payload.Authorization.To {
-			continue
-		}
+		// Note: We can't check the asset (token contract) here because it's not
+		// included in the PaymentPayload. The asset is part of the EIP-712 domain
+		// that's signed, and the facilitator will verify it matches when checking
+		// the signature. We rely on the facilitator to ensure the payment uses
+		// the correct asset.
 
 		// Found a matching requirement
 		return req, nil
