@@ -22,17 +22,47 @@ func main() {
 		serverURL = "http://localhost:8080"
 	}
 
-	// Create signer with your private key and explicit payment options
-	// Using Base Sepolia for testing
-	signer, err := x402.NewPrivateKeySigner(
-		privateKey,
-		x402.AcceptUSDCBaseSepolia(), // Accept USDC on Base Sepolia testnet
-	)
+	// Determine network from environment (default to testnet)
+	network := os.Getenv("NETWORK")
+	if network == "" {
+		network = "testnet"
+	}
+
+	// Create signer with explicit payment options based on network
+	var signer x402.PaymentSigner
+	var err error
+
+	if network == "mainnet" {
+		log.Println("Configuring for mainnet...")
+		signer, err = x402.NewPrivateKeySigner(
+			privateKey,
+			// Accept USDC on Base mainnet with priority and limits
+			x402.AcceptUSDCBase().
+				WithPriority(1).           // Prefer Base for lower fees
+				WithMaxAmount("500000").   // Max 0.5 USDC per payment
+				WithMinBalance("1000000"), // Keep 1 USDC as reserve
+		)
+	} else {
+		log.Println("Configuring for testnet...")
+		// For testing, accept USDC on Base Sepolia
+		signer, err = x402.NewPrivateKeySigner(
+			privateKey,
+			x402.AcceptUSDCBaseSepolia(), // Accept USDC on Base Sepolia testnet
+		)
+	}
+
 	if err != nil {
 		log.Fatal("Failed to create signer:", err)
 	}
 
 	log.Printf("Using wallet address: %s", signer.GetAddress())
+	log.Printf("Payment options configured:")
+	if signer.SupportsNetwork("base") {
+		log.Printf("  - Base mainnet: USDC")
+	}
+	if signer.SupportsNetwork("base-sepolia") {
+		log.Printf("  - Base Sepolia: USDC (testnet)")
+	}
 
 	// Create x402 transport
 	x402transport, err := x402.New(x402.Config{
