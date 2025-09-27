@@ -60,9 +60,9 @@ func TestSignerChainID(t *testing.T) {
 		assert.Contains(t, err.Error(), "no payment option configured")
 	})
 
-	t.Run("FallbackToGlobalMappingIfNoChainID", func(t *testing.T) {
-		// Create a payment option without chain ID (simulating old code)
-		legacyOption := ClientPaymentOption{
+	t.Run("RequiresChainIDInPaymentOption", func(t *testing.T) {
+		// Create a payment option without chain ID
+		optionWithoutChainID := ClientPaymentOption{
 			PaymentRequirement: PaymentRequirement{
 				Scheme:  "exact",
 				Network: "sepolia",
@@ -73,17 +73,17 @@ func TestSignerChainID(t *testing.T) {
 				},
 			},
 			Priority: 1,
-			// ChainID is nil - should fall back to global mapping
+			// ChainID is nil - this should cause signing to fail
 		}
 
 		signer, err := NewPrivateKeySigner(
 			"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-			legacyOption,
+			optionWithoutChainID,
 		)
 		require.NoError(t, err)
 
-		// Should still be able to sign using global mapping
-		payment, err := signer.SignPayment(context.Background(), PaymentRequirement{
+		// Should fail to sign without chain ID
+		_, err = signer.SignPayment(context.Background(), PaymentRequirement{
 			Scheme:            "exact",
 			Network:           "sepolia",
 			Asset:             "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
@@ -96,9 +96,8 @@ func TestSignerChainID(t *testing.T) {
 			},
 		})
 
-		require.NoError(t, err)
-		assert.NotNil(t, payment)
-		// The global mapping should provide chain ID 11155111 for Sepolia
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "chain ID not configured")
 	})
 
 	t.Run("MultipleOptionsWithDifferentChainIDs", func(t *testing.T) {

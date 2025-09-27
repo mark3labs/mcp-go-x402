@@ -90,24 +90,6 @@ const (
 	PaymentEventFailure PaymentEventType = "failure"
 )
 
-// NetworkChainIDs maps network names to chain IDs
-var NetworkChainIDs = map[string]*big.Int{
-	"base-sepolia":   big.NewInt(84532),
-	"base":           big.NewInt(8453),
-	"avalanche-fuji": big.NewInt(43113),
-	"avalanche":      big.NewInt(43114),
-	"ethereum":       big.NewInt(1),
-	"sepolia":        big.NewInt(11155111),
-}
-
-// GetChainID returns the chain ID for a network name
-func GetChainID(network string) *big.Int {
-	if chainID, ok := NetworkChainIDs[network]; ok {
-		return chainID
-	}
-	return big.NewInt(1) // Default to mainnet
-}
-
 // ClientPaymentOption represents a payment method the client accepts
 type ClientPaymentOption struct {
 	PaymentRequirement

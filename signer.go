@@ -119,8 +119,7 @@ func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequireme
 
 	chainID := paymentOption.ChainID
 	if chainID == nil {
-		// Fall back to global mapping for backward compatibility
-		chainID = GetChainID(req.Network)
+		return nil, fmt.Errorf("chain ID not configured for network %s", req.Network)
 	}
 
 	// Generate nonce
@@ -344,7 +343,7 @@ func NewMockSigner(address string, options ...ClientPaymentOption) *MockSigner {
 	}
 
 	if len(options) == 0 {
-		// Default to Base USDC for testing
+		// Default to Base Sepolia USDC for testing
 		options = []ClientPaymentOption{AcceptUSDCBaseSepolia()}
 	}
 
