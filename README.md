@@ -132,26 +132,10 @@ func main() {
             mcp.WithDescription("Premium feature"),
             mcp.WithString("input", mcp.Required())),
         premiumToolHandler,
-        // Option 1: Pay with USDC on Ethereum
-        x402server.PaymentRequirement{
-            Scheme:            "exact",
-            Network:           "ethereum-mainnet",
-            Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-            PayTo:             "0xYourWallet",
-            MaxAmountRequired: "10000", // 0.01 USDC
-            Description:       "Premium feature via Ethereum",
-            MaxTimeoutSeconds: 60,
-        },
-        // Option 2: Pay with USDC on Base (discounted)
-        x402server.PaymentRequirement{
-            Scheme:            "exact",
-            Network:           "base-mainnet",
-            Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-            PayTo:             "0xYourWallet",
-            MaxAmountRequired: "5000", // 0.005 USDC (50% discount)
-            Description:       "Premium feature via Base (50% off)",
-            MaxTimeoutSeconds: 60,
-        },
+    // Option 1: Pay with USDC on Base
+    x402server.RequireUSDCBase("0xYourWallet", "10000", "Premium feature via Base"),
+    // Option 2: Pay with USDC on Base Sepolia (testnet)
+    x402server.RequireUSDCBaseSepolia("0xYourWallet", "5000", "Premium feature via Base Sepolia (testnet)"),
     )
     
     // Start server
@@ -271,32 +255,19 @@ srv.AddPayableTool(
         mcp.WithDescription("Advanced analytics"),
         mcp.WithString("query", mcp.Required())),
     analyticsHandler,
-    // Ethereum mainnet - standard price
+    // Base mainnet - standard price
+    x402server.RequireUSDCBase("0xYourWallet", "100000", "Analytics via Base - 0.1 USDC"),
+    // Base Sepolia - testnet option
+    x402server.RequireUSDCBaseSepolia("0xYourWallet", "50000", "Analytics via Base Sepolia (testnet) - 0.05 USDC"),
+    // Custom network example - Ethereum mainnet
     x402server.PaymentRequirement{
-        Scheme:            "eip3009",
-        Network:           "ethereum-mainnet",
-        Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+        Scheme:            "exact",
+        Network:           "ethereum",
+        Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC on Ethereum
         PayTo:             "0xYourWallet",
         MaxAmountRequired: "100000", // 0.1 USDC
         Description:       "Analytics via Ethereum",
-    },
-    // Polygon - same price, lower gas fees
-    x402server.PaymentRequirement{
-        Scheme:            "eip3009",
-        Network:           "polygon-mainnet",
-        Asset:             "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
-        PayTo:             "0xYourWallet",
-        MaxAmountRequired: "100000", // 0.1 USDC
-        Description:       "Analytics via Polygon (lower fees)",
-    },
-    // Base - discounted price
-    x402server.PaymentRequirement{
-        Scheme:            "eip3009",
-        Network:           "base-mainnet",
-        Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
-        PayTo:             "0xYourWallet",
-        MaxAmountRequired: "50000", // 0.05 USDC (50% discount)
-        Description:       "Analytics via Base (50% discount)",
+        MaxTimeoutSeconds: 60,
     },
 )
 ```
@@ -305,7 +276,6 @@ When a client requests a paid tool without payment, they receive all available p
 - Network preference (gas fees, speed)
 - Available balance on different chains
 - Price differences (discounts for certain networks)
-```
 
 ### Using with Existing MCP Server
 
@@ -489,12 +459,12 @@ func TestPaymentFlow(t *testing.T) {
 
 ## Supported Networks
 
-- `base` - Base Mainnet
-- `base-sepolia` - Base Sepolia Testnet
-- `avalanche` - Avalanche C-Chain
-- `avalanche-fuji` - Avalanche Fuji Testnet
-- `ethereum` - Ethereum Mainnet
-- `sepolia` - Ethereum Sepolia Testnet
+Currently, the library includes built-in helper functions for:
+
+- `base` - Base Mainnet (via `AcceptUSDCBase()`)
+- `base-sepolia` - Base Sepolia Testnet (via `AcceptUSDCBaseSepolia()`)
+
+Additional networks can be supported by manually configuring `ClientPaymentOption` objects with the appropriate network, asset, and scheme parameters.
 
 ## Security Considerations
 
@@ -507,8 +477,8 @@ func TestPaymentFlow(t *testing.T) {
 
 See the [examples](./examples) directory for more detailed examples:
 
-- [Client](./examples/client/main.go) - Simple client that can pay for tool use
-- [Server](./examples/server/main.go) - Server that collects payments for tool use
+- [Client](./examples/client/) - Simple client that can pay for tool use (see [main.go](./examples/client/main.go))
+- [Server](./examples/server/) - Server that collects payments for tool use (see [main.go](./examples/server/main.go))
 
 ## Architecture
 
@@ -538,5 +508,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Acknowledgments
 
 - [MCP-Go](https://github.com/mark3labs/mcp-go) for the excellent MCP implementation
-- [x402 Protocol](https://github.com/coinbase/x402) for the payment specification
+- [x402 Protocol](https://x402.org) ([GitHub](https://github.com/coinbase/x402)) for the payment specification
 - [go-ethereum](https://github.com/ethereum/go-ethereum) for crypto utilities
