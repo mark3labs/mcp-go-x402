@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 
@@ -11,28 +12,29 @@ import (
 )
 
 func main() {
-	// Get private key from environment
-	privateKey := os.Getenv("WALLET_PRIVATE_KEY")
+	// Define command-line flags
+	var (
+		privateKeyFlag = flag.String("key", "", "Private key hex (or set WALLET_PRIVATE_KEY env var)")
+		serverURL      = flag.String("server", "http://localhost:8080", "MCP server URL")
+		network        = flag.String("network", "testnet", "Network to use: testnet or mainnet")
+		verbose        = flag.Bool("v", false, "Verbose output")
+	)
+	flag.Parse()
+
+	// Get private key from flag or environment
+	privateKey := *privateKeyFlag
 	if privateKey == "" {
-		log.Fatal("WALLET_PRIVATE_KEY environment variable is required")
-	}
-
-	serverURL := os.Getenv("MCP_SERVER_URL")
-	if serverURL == "" {
-		serverURL = "http://localhost:8080"
-	}
-
-	// Determine network from environment (default to testnet)
-	network := os.Getenv("NETWORK")
-	if network == "" {
-		network = "testnet"
+		privateKey = os.Getenv("WALLET_PRIVATE_KEY")
+		if privateKey == "" {
+			log.Fatal("Private key required: use -key flag or set WALLET_PRIVATE_KEY environment variable")
+		}
 	}
 
 	// Create signer with explicit payment options based on network
 	var signer x402.PaymentSigner
 	var err error
 
-	if network == "mainnet" {
+	if *network == "mainnet" {
 		log.Println("Configuring for mainnet...")
 		signer, err = x402.NewPrivateKeySigner(
 			privateKey,
@@ -56,31 +58,38 @@ func main() {
 	}
 
 	log.Printf("Using wallet address: %s", signer.GetAddress())
-	log.Printf("Payment options configured:")
-	if signer.SupportsNetwork("base") {
-		log.Printf("  - Base mainnet: USDC")
-	}
-	if signer.SupportsNetwork("base-sepolia") {
-		log.Printf("  - Base Sepolia: USDC (testnet)")
+	if *verbose {
+		log.Printf("Payment options configured:")
+		if signer.SupportsNetwork("base") {
+			log.Printf("  - Base mainnet: USDC")
+		}
+		if signer.SupportsNetwork("base-sepolia") {
+			log.Printf("  - Base Sepolia: USDC (testnet)")
+		}
 	}
 
-	// Create x402 transport
-	x402transport, err := x402.New(x402.Config{
-		ServerURL:        serverURL,
+	// Create x402 transport with optional verbose logging
+	config := x402.Config{
+		ServerURL:        *serverURL,
 		Signer:           signer,
 		MaxPaymentAmount: "1000000", // 1 USDC max per request
 		AutoPayThreshold: "100000",  // Auto-pay up to 0.1 USDC
-		OnPaymentAttempt: func(event x402.PaymentEvent) {
+	}
+
+	if *verbose {
+		config.OnPaymentAttempt = func(event x402.PaymentEvent) {
 			log.Printf("Attempting payment of %s %s to %s",
 				event.Amount, event.Asset, event.Recipient)
-		},
-		OnPaymentSuccess: func(event x402.PaymentEvent) {
+		}
+		config.OnPaymentSuccess = func(event x402.PaymentEvent) {
 			log.Printf("Payment successful! Transaction: %s", event.Transaction)
-		},
-		OnPaymentFailure: func(event x402.PaymentEvent, err error) {
+		}
+		config.OnPaymentFailure = func(event x402.PaymentEvent, err error) {
 			log.Printf("Payment failed: %v", err)
-		},
-	})
+		}
+	}
+
+	x402transport, err := x402.New(config)
 	if err != nil {
 		log.Fatal("Failed to create transport:", err)
 	}

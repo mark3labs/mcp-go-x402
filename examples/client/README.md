@@ -8,20 +8,65 @@ This directory contains an example implementation of an x402 MCP client with pay
 - `main_test.go` - Test implementations
 - `README.md` - This file
 
-## Running the Example
+## Quick Start
 
 ```bash
-# Set your private key (required)
+# Build the client
+go build -o client
+
+# Run with testnet configuration (default)
+./client -key YOUR_PRIVATE_KEY_HEX
+
+# Or use environment variable for the key
 export WALLET_PRIVATE_KEY="your-private-key-hex"
+./client
 
-# Optional: Set server URL (defaults to localhost:8080)
-export MCP_SERVER_URL="http://localhost:8080"
+# Connect to a different server
+./client -server http://example.com:8080
 
-# Optional: Set network (testnet or mainnet, defaults to testnet)
-export NETWORK="testnet"
+# Use mainnet configuration
+./client -network mainnet
 
-# Run the client
-go run main.go
+# Enable verbose logging
+./client -v
+```
+
+## Command-line Flags
+
+```
+Usage: ./client [flags]
+
+Flags:
+  -key string
+        Private key hex (or set WALLET_PRIVATE_KEY env var)
+  -server string
+        MCP server URL (default "http://localhost:8080")
+  -network string
+        Network to use: testnet or mainnet (default "testnet")
+  -v    Verbose output (shows payment attempts and results)
+```
+
+## Examples
+
+### Basic Usage (Testnet)
+
+```bash
+# Run with testnet configuration
+./client -key 0x1234...abcd
+```
+
+### Mainnet Configuration
+
+```bash
+# Use mainnet with verbose logging
+./client -key 0x1234...abcd -network mainnet -v
+```
+
+### Custom Server
+
+```bash
+# Connect to remote server
+./client -key 0x1234...abcd -server https://api.example.com
 ```
 
 ## Payment Options Configuration
