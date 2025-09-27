@@ -99,4 +99,7 @@ type Config struct {
 
 	// VerifyOnly if true, only verifies but doesn't settle payments
 	VerifyOnly bool
+
+	// Verbose if true, logs detailed request and payment information
+	Verbose bool
 }

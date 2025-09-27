@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 )
 
@@ -18,10 +19,12 @@ type X402Handler struct {
 
 // NewX402Handler creates a new x402 handler wrapper
 func NewX402Handler(mcpHandler http.Handler, config *Config) *X402Handler {
+	facilitator := NewHTTPFacilitator(config.FacilitatorURL)
+	facilitator.SetVerbose(config.Verbose)
 	return &X402Handler{
 		mcpHandler:  mcpHandler,
 		config:      config,
-		facilitator: NewHTTPFacilitator(config.FacilitatorURL),
+		facilitator: facilitator,
 	}
 }
 
@@ -30,6 +33,10 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.mcpHandler.ServeHTTP(w, r)
 		return
+	}
+
+	if h.config.Verbose {
+		log.Printf("[X402] Incoming %s request from %s", r.Method, r.RemoteAddr)
 	}
 
 	// Read and buffer the request body
@@ -60,15 +67,26 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check if this is a tool call (JSON-RPC method)
 	if mcpReq.Method != "tools/call" {
+		if h.config.Verbose && mcpReq.Method != "" {
+			log.Printf("[X402] Non-tool call method: %s, passing through", mcpReq.Method)
+		}
 		h.mcpHandler.ServeHTTP(w, r)
 		return
 	}
 
 	// Check if this tool requires payment
-	requirements, needsPayment := h.config.PaymentTools[mcpReq.Params.Name]
+	toolName := mcpReq.Params.Name
+	requirements, needsPayment := h.config.PaymentTools[toolName]
 	if !needsPayment {
+		if h.config.Verbose {
+			log.Printf("[X402] Tool '%s' is free, passing through", toolName)
+		}
 		h.mcpHandler.ServeHTTP(w, r)
 		return
+	}
+
+	if h.config.Verbose {
+		log.Printf("[X402] Tool '%s' requires payment, checking for X-PAYMENT header", toolName)
 	}
 
 	// Ensure all requirements have proper fields set
@@ -82,29 +100,67 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check for payment header
 	paymentHeader := r.Header.Get("X-PAYMENT")
 	if paymentHeader == "" {
+		if h.config.Verbose {
+			log.Printf("[X402] No payment header found, sending 402 response")
+			log.Printf("[X402] Payment requirements: %d options for tool '%s'", len(requirements), toolName)
+			for i, req := range requirements {
+				log.Printf("[X402]   Option %d: %s %s on %s, pay to %s",
+					i+1, req.MaxAmountRequired, req.Asset, req.Network, req.PayTo)
+			}
+		}
 		h.send402Response(w, requirements, mcpReq.Params.Name)
 		return
+	}
+
+	if h.config.Verbose {
+		log.Printf("[X402] Payment header found, decoding...")
 	}
 
 	// Decode and verify payment
 	payment, err := h.decodePaymentHeader(paymentHeader)
 	if err != nil {
-		fmt.Printf("Failed to decode payment header: %v\n", err)
+		if h.config.Verbose {
+			log.Printf("[X402] Failed to decode payment header: %v", err)
+		}
 		http.Error(w, "Invalid payment header", http.StatusBadRequest)
 		return
+	}
+
+	if h.config.Verbose {
+		log.Printf("[X402] Payment decoded: network=%s, scheme=%s, from=%s, to=%s, value=%s",
+			payment.Network, payment.Scheme,
+			payment.Payload.Authorization.From,
+			payment.Payload.Authorization.To,
+			payment.Payload.Authorization.Value)
 	}
 
 	// Find matching requirement for the payment
 	requirement, err := h.findMatchingRequirement(payment, requirements)
 	if err != nil {
+		if h.config.Verbose {
+			log.Printf("[X402] Payment matching failed: %v", err)
+			log.Printf("[X402] Available requirements:")
+			for i, req := range requirements {
+				log.Printf("[X402]   %d: network=%s, scheme=%s", i+1, req.Network, req.Scheme)
+			}
+		}
 		http.Error(w, fmt.Sprintf("Payment does not match any accepted options: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	if h.config.Verbose {
+		log.Printf("[X402] Payment matched requirement: network=%s, amount=%s",
+			requirement.Network, requirement.MaxAmountRequired)
+		log.Printf("[X402] Verifying payment with facilitator...")
 	}
 
 	// Verify payment with facilitator
 	ctx := r.Context()
 	verifyResp, err := h.facilitator.Verify(ctx, payment, requirement)
 	if err != nil {
+		if h.config.Verbose {
+			log.Printf("[X402] Facilitator verification error: %v", err)
+		}
 		http.Error(w, "Payment verification failed", http.StatusBadRequest)
 		return
 	}
@@ -113,23 +169,42 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if verifyResp.InvalidReason != "" {
 			errorMsg = verifyResp.InvalidReason
 		}
+		if h.config.Verbose {
+			log.Printf("[X402] Facilitator rejected payment: %s", errorMsg)
+		}
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
+	}
+
+	if h.config.Verbose {
+		log.Printf("[X402] Payment verified successfully by facilitator, payer: %s", verifyResp.Payer)
 	}
 
 	// Settle payment if not in verify-only mode
 	var settleResp *SettleResponse
 	if !h.config.VerifyOnly {
+		if h.config.Verbose {
+			log.Printf("[X402] Settling payment on-chain...")
+		}
 		settleResp, err = h.facilitator.Settle(ctx, payment, requirement)
 		if err != nil || !settleResp.Success {
 			errorMsg := "Payment settlement failed"
 			if settleResp != nil && settleResp.ErrorReason != "" {
 				errorMsg = settleResp.ErrorReason
 			}
+			if h.config.Verbose {
+				log.Printf("[X402] Settlement failed: %s", errorMsg)
+			}
 			http.Error(w, errorMsg, http.StatusBadRequest)
 			return
 		}
+		if h.config.Verbose {
+			log.Printf("[X402] Payment settled successfully, tx: %s", settleResp.Transaction)
+		}
 	} else {
+		if h.config.Verbose {
+			log.Printf("[X402] Verify-only mode, skipping settlement")
+		}
 		// In verify-only mode, create a mock settle response
 		settleResp = &SettleResponse{
 			Success:     true,

@@ -18,6 +18,7 @@ func main() {
 		payTo          = flag.String("pay-to", "", "Payment recipient wallet address (required)")
 		verifyOnly     = flag.Bool("verify-only", false, "Only verify payments, don't settle on-chain")
 		testnet        = flag.Bool("testnet", false, "Enable testnet payment options")
+		verbose        = flag.Bool("v", false, "Verbose output (show requests and payment processing)")
 	)
 	flag.Parse()
 
@@ -29,6 +30,7 @@ func main() {
 	config := &x402server.Config{
 		FacilitatorURL: *facilitatorURL,
 		VerifyOnly:     *verifyOnly,
+		Verbose:        *verbose,
 	}
 
 	// Create x402 server
@@ -72,6 +74,9 @@ func main() {
 	log.Printf("Facilitator URL: %s", *facilitatorURL)
 	log.Printf("Payment recipient: %s", *payTo)
 	log.Printf("Verify Only Mode: %v", *verifyOnly)
+	if *verbose {
+		log.Printf("Verbose Mode: ENABLED")
+	}
 	log.Println("Tools:")
 	log.Println("  - search (paid): 0.01 USDC on Base")
 	log.Println("  - echo (free)")
