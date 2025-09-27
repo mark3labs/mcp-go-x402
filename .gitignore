@@ -34,3 +34,7 @@ Thumbs.db
 # Test coverage
 *.coverprofile
 coverage.html
+
+# Example binaries
+examples/client/client
+examples/server/server
