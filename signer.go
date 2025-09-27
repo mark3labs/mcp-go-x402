@@ -93,7 +93,7 @@ func (s *PrivateKeySigner) SupportsNetwork(network string) bool {
 
 func (s *PrivateKeySigner) HasAsset(asset, network string) bool {
 	for _, opt := range s.paymentOptions {
-		if opt.Network == network && opt.Asset == asset && opt.Scheme == "eip3009" {
+		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
 			return true
 		}
 	}
@@ -363,7 +363,7 @@ func (m *MockSigner) SupportsNetwork(network string) bool {
 
 func (m *MockSigner) HasAsset(asset, network string) bool {
 	for _, opt := range m.paymentOptions {
-		if opt.Network == network && opt.Asset == asset && opt.Scheme == "eip3009" {
+		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
 			return true
 		}
 	}

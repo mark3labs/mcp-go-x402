@@ -92,13 +92,13 @@ func TestPaymentSelection(t *testing.T) {
 		// Server accepts both options
 		accepts := []PaymentRequirement{
 			{
-				Scheme:            "eip3009",
+				Scheme:            "exact",
 				Network:           "base",
 				Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 				MaxAmountRequired: "5000",
 			},
 			{
-				Scheme:            "eip3009",
+				Scheme:            "exact",
 				Network:           "base-sepolia",
 				Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 				MaxAmountRequired: "5000",
@@ -127,13 +127,13 @@ func TestPaymentSelection(t *testing.T) {
 		// Server accepts both with different prices
 		accepts := []PaymentRequirement{
 			{
-				Scheme:            "eip3009",
+				Scheme:            "exact",
 				Network:           "base",
 				Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 				MaxAmountRequired: "10000", // More expensive
 			},
 			{
-				Scheme:            "eip3009",
+				Scheme:            "exact",
 				Network:           "base-sepolia",
 				Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 				MaxAmountRequired: "5000", // Cheaper
@@ -162,13 +162,13 @@ func TestPaymentSelection(t *testing.T) {
 		// Server requires more than Base max
 		accepts := []PaymentRequirement{
 			{
-				Scheme:            "eip3009",
+				Scheme:            "exact",
 				Network:           "base",
 				Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 				MaxAmountRequired: "5000", // Exceeds client's Base max
 			},
 			{
-				Scheme:            "eip3009",
+				Scheme:            "exact",
 				Network:           "base-sepolia",
 				Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 				MaxAmountRequired: "5000",
@@ -198,7 +198,7 @@ func TestMockSigner(t *testing.T) {
 		signer := NewMockSigner("0xTestWallet", AcceptUSDCBase())
 
 		payment, err := signer.SignPayment(context.Background(), PaymentRequirement{
-			Scheme:            "eip3009",
+			Scheme:            "exact",
 			Network:           "base",
 			Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 			PayTo:             "0xRecipient",
@@ -207,7 +207,7 @@ func TestMockSigner(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		assert.Equal(t, "eip3009", payment.Scheme)
+		assert.Equal(t, "exact", payment.Scheme)
 		assert.Equal(t, "base", payment.Network)
 	})
 }

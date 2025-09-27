@@ -6,7 +6,7 @@ package x402
 func AcceptUSDCBase() ClientPaymentOption {
 	return ClientPaymentOption{
 		PaymentRequirement: PaymentRequirement{
-			Scheme:  "eip3009",
+			Scheme:  "exact",
 			Network: "base",
 			Asset:   "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
 			Extra: map[string]string{
@@ -22,7 +22,7 @@ func AcceptUSDCBase() ClientPaymentOption {
 func AcceptUSDCBaseSepolia() ClientPaymentOption {
 	return ClientPaymentOption{
 		PaymentRequirement: PaymentRequirement{
-			Scheme:  "eip3009",
+			Scheme:  "exact",
 			Network: "base-sepolia",
 			Asset:   "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // USDC on Base Sepolia
 			Extra: map[string]string{

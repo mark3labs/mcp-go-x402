@@ -134,7 +134,7 @@ func main() {
         premiumToolHandler,
         // Option 1: Pay with USDC on Ethereum
         x402server.PaymentRequirement{
-            Scheme:            "eip3009",
+            Scheme:            "exact",
             Network:           "ethereum-mainnet",
             Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
             PayTo:             "0xYourWallet",
@@ -144,7 +144,7 @@ func main() {
         },
         // Option 2: Pay with USDC on Base (discounted)
         x402server.PaymentRequirement{
-            Scheme:            "eip3009",
+            Scheme:            "exact",
             Network:           "base-mainnet",
             Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
             PayTo:             "0xYourWallet",

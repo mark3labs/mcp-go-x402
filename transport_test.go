@@ -33,7 +33,7 @@ func TestX402Transport_Basic(t *testing.T) {
 				Error:       "Payment required",
 				Accepts: []PaymentRequirement{
 					{
-						Scheme:            "eip3009",
+						Scheme:            "exact",
 						Network:           "base-sepolia",
 						MaxAmountRequired: "1000",
 						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -110,7 +110,7 @@ func TestX402Transport_ExceedsLimit(t *testing.T) {
 			Error:       "Payment required",
 			Accepts: []PaymentRequirement{
 				{
-					Scheme:            "eip3009",
+					Scheme:            "exact",
 					Network:           "base-sepolia",
 					MaxAmountRequired: "1000000", // Exceeds limit
 					Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -163,7 +163,7 @@ func TestX402Transport_RateLimit(t *testing.T) {
 				Error:       "Payment required",
 				Accepts: []PaymentRequirement{
 					{
-						Scheme:            "eip3009",
+						Scheme:            "exact",
 						Network:           "base-sepolia",
 						MaxAmountRequired: "100",
 						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -238,7 +238,7 @@ func TestX402Transport_PaymentCallback(t *testing.T) {
 				Error:       "Payment required",
 				Accepts: []PaymentRequirement{
 					{
-						Scheme:            "eip3009",
+						Scheme:            "exact",
 						Network:           "base-sepolia",
 						MaxAmountRequired: "10000", // Above auto-pay threshold
 						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -307,7 +307,7 @@ func TestX402Transport_MultipleRequests(t *testing.T) {
 				Error:       "Payment required",
 				Accepts: []PaymentRequirement{
 					{
-						Scheme:            "eip3009",
+						Scheme:            "exact",
 						Network:           "base-sepolia",
 						MaxAmountRequired: "1000",
 						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -633,7 +633,7 @@ func TestX402Transport_PaymentCallbackRejection(t *testing.T) {
 			Error:       "Payment required",
 			Accepts: []PaymentRequirement{
 				{
-					Scheme:            "eip3009",
+					Scheme:            "exact",
 					Network:           "base-sepolia",
 					MaxAmountRequired: "10000",
 					Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

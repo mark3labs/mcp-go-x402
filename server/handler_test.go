@@ -216,7 +216,7 @@ func TestX402Handler_MultiplePaymentOptions(t *testing.T) {
 		PaymentTools: map[string][]PaymentRequirement{
 			"multi-pay-tool": {
 				{
-					Scheme:            "eip3009",
+					Scheme:            "exact",
 					Network:           "ethereum-mainnet",
 					MaxAmountRequired: "1000000", // 1 USDC
 					Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -224,7 +224,7 @@ func TestX402Handler_MultiplePaymentOptions(t *testing.T) {
 					Description:       "Pay with USDC on Ethereum",
 				},
 				{
-					Scheme:            "eip3009",
+					Scheme:            "exact",
 					Network:           "polygon-mainnet",
 					MaxAmountRequired: "1000000", // 1 USDC
 					Asset:             "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
@@ -232,7 +232,7 @@ func TestX402Handler_MultiplePaymentOptions(t *testing.T) {
 					Description:       "Pay with USDC on Polygon",
 				},
 				{
-					Scheme:            "eip3009",
+					Scheme:            "exact",
 					Network:           "base-mainnet",
 					MaxAmountRequired: "500000", // 0.5 USDC (discount)
 					Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -305,14 +305,14 @@ func TestX402Handler_PaymentMatching(t *testing.T) {
 		PaymentTools: map[string][]PaymentRequirement{
 			"multi-pay-tool": {
 				{
-					Scheme:            "eip3009",
+					Scheme:            "exact",
 					Network:           "ethereum-mainnet",
 					MaxAmountRequired: "1000000",
 					Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
 					PayTo:             "0xrecipient",
 				},
 				{
-					Scheme:            "eip3009",
+					Scheme:            "exact",
 					Network:           "base-mainnet",
 					MaxAmountRequired: "500000",
 					Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -328,7 +328,7 @@ func TestX402Handler_PaymentMatching(t *testing.T) {
 	// Create payment for Base network (cheaper option)
 	payment := &PaymentPayload{
 		X402Version: 1,
-		Scheme:      "eip3009",
+		Scheme:      "exact",
 		Network:     "base-mainnet",
 	}
 	payment.Payload.Signature = "0xsig"

@@ -145,7 +145,7 @@ This error means the client's configured payment options don't match what the se
 Check:
 1. Network names match exactly (e.g., "base" vs "base-mainnet")
 2. Asset addresses match
-3. Payment scheme matches (usually "eip3009")
+3. Payment scheme matches (usually "exact")
 
 ### "Payment declined by policy"
 
@@ -165,7 +165,7 @@ For other networks, create a custom `ClientPaymentOption`:
 ```go
 customOption := x402.ClientPaymentOption{
     PaymentRequirement: x402.PaymentRequirement{
-        Scheme:  "eip3009",
+        Scheme:  "exact",
         Network: "polygon",
         Asset:   "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
     },
