@@ -111,6 +111,18 @@ func (s *PrivateKeySigner) GetPaymentOption(network, asset string) *ClientPaymen
 }
 
 func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
+	// Find the matching payment option to get chain ID
+	paymentOption := s.GetPaymentOption(req.Network, req.Asset)
+	if paymentOption == nil {
+		return nil, fmt.Errorf("no payment option configured for network %s and asset %s", req.Network, req.Asset)
+	}
+
+	chainID := paymentOption.ChainID
+	if chainID == nil {
+		// Fall back to global mapping for backward compatibility
+		chainID = GetChainID(req.Network)
+	}
+
 	// Generate nonce
 	nonceBytes := crypto.Keccak256([]byte(fmt.Sprintf("%d-%s-%s",
 		time.Now().UnixNano(), req.Resource, s.address.Hex())))
@@ -132,7 +144,6 @@ func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequireme
 	validBefore := time.Now().Add(time.Duration(timeout) * time.Second).Unix()
 
 	// Create EIP-712 typed data
-	chainID := GetChainID(req.Network)
 
 	// Parse value
 	value := new(big.Int)

@@ -2,6 +2,7 @@ package x402
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,14 @@ func TestClientPaymentOptions(t *testing.T) {
 		_, err := NewPrivateKeySigner("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "at least one payment option")
+	})
+
+	t.Run("HelperFunctionsIncludeChainID", func(t *testing.T) {
+		baseOption := AcceptUSDCBase()
+		assert.Equal(t, big.NewInt(8453), baseOption.ChainID, "Base mainnet should have chain ID 8453")
+
+		sepoliaOption := AcceptUSDCBaseSepolia()
+		assert.Equal(t, big.NewInt(84532), sepoliaOption.ChainID, "Base Sepolia should have chain ID 84532")
 	})
 
 	t.Run("AcceptsMultipleOptions", func(t *testing.T) {
@@ -46,6 +55,7 @@ func TestClientPaymentOptions(t *testing.T) {
 		assert.Equal(t, "100000", option.MaxAmount)
 		assert.Equal(t, "50000", option.MinBalance)
 		assert.Equal(t, "base", option.Network)
+		assert.Equal(t, big.NewInt(8453), option.ChainID, "Chain ID should be preserved through fluent API")
 	})
 
 	t.Run("GetPaymentOption", func(t *testing.T) {
@@ -61,16 +71,46 @@ func TestClientPaymentOptions(t *testing.T) {
 		require.NotNil(t, baseOpt)
 		assert.Equal(t, 1, baseOpt.Priority)
 		assert.Equal(t, "base", baseOpt.Network)
+		assert.Equal(t, big.NewInt(8453), baseOpt.ChainID)
 
 		// Get Base Sepolia option
 		sepoliaOpt := signer.GetPaymentOption("base-sepolia", "0x036CbD53842c5426634e7929541eC2318f3dCF7e")
 		require.NotNil(t, sepoliaOpt)
 		assert.Equal(t, 2, sepoliaOpt.Priority)
 		assert.Equal(t, "base-sepolia", sepoliaOpt.Network)
+		assert.Equal(t, big.NewInt(84532), sepoliaOpt.ChainID)
 
 		// Try non-existent option
 		nilOpt := signer.GetPaymentOption("ethereum", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
 		assert.Nil(t, nilOpt)
+	})
+
+	t.Run("CustomPaymentOptionWithChainID", func(t *testing.T) {
+		// Create a custom payment option for Ethereum mainnet
+		customOption := ClientPaymentOption{
+			PaymentRequirement: PaymentRequirement{
+				Scheme:  "exact",
+				Network: "ethereum",
+				Asset:   "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC on Ethereum
+				Extra: map[string]string{
+					"name":    "USD Coin",
+					"version": "2",
+				},
+			},
+			Priority: 1,
+			ChainID:  big.NewInt(1), // Ethereum mainnet
+		}
+
+		signer, err := NewPrivateKeySigner(
+			"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+			customOption,
+		)
+		require.NoError(t, err)
+
+		// Verify the option is stored correctly
+		option := signer.GetPaymentOption("ethereum", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+		require.NotNil(t, option)
+		assert.Equal(t, big.NewInt(1), option.ChainID)
 	})
 }
 

@@ -1,5 +1,7 @@
 package x402
 
+import "math/big"
+
 // Helper functions for common client payment options
 
 // AcceptUSDCBase creates a client payment option for USDC on Base mainnet
@@ -14,7 +16,8 @@ func AcceptUSDCBase() ClientPaymentOption {
 				"version": "2",
 			},
 		},
-		Priority: 1, // Default high priority for Base (cheap & fast)
+		Priority: 1,                // Default high priority for Base (cheap & fast)
+		ChainID:  big.NewInt(8453), // Base mainnet chain ID
 	}
 }
 
@@ -31,6 +34,7 @@ func AcceptUSDCBaseSepolia() ClientPaymentOption {
 			},
 		},
 		Priority: 1,
+		ChainID:  big.NewInt(84532), // Base Sepolia chain ID
 	}
 }
 

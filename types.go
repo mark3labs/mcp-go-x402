@@ -113,7 +113,8 @@ type ClientPaymentOption struct {
 	PaymentRequirement
 
 	// Client-specific fields
-	Priority   int    `json:"-"` // Lower number = higher priority
-	MaxAmount  string `json:"-"` // Client's max willing to pay with this option
-	MinBalance string `json:"-"` // Don't use if balance falls below this
+	Priority   int      `json:"-"` // Lower number = higher priority
+	MaxAmount  string   `json:"-"` // Client's max willing to pay with this option
+	MinBalance string   `json:"-"` // Don't use if balance falls below this
+	ChainID    *big.Int `json:"-"` // Chain ID for signing (internal only)
 }
