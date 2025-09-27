@@ -107,3 +107,13 @@ func GetChainID(network string) *big.Int {
 	}
 	return big.NewInt(1) // Default to mainnet
 }
+
+// ClientPaymentOption represents a payment method the client accepts
+type ClientPaymentOption struct {
+	PaymentRequirement
+
+	// Client-specific fields
+	Priority   int    `json:"-"` // Lower number = higher priority
+	MaxAmount  string `json:"-"` // Client's max willing to pay with this option
+	MinBalance string `json:"-"` // Don't use if balance falls below this
+}

@@ -6,7 +6,7 @@ package server
 func RequireUSDCBase(payTo, amount, description string) PaymentRequirement {
 	return PaymentRequirement{
 		Scheme:            "eip3009",
-		Network:           "base-mainnet",
+		Network:           "base",
 		Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
 		PayTo:             payTo,
 		MaxAmountRequired: amount,

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,16 +33,20 @@ type PaymentSigner interface {
 
 	// HasAsset returns true if the signer has the given asset on the network
 	HasAsset(asset, network string) bool
+
+	// GetPaymentOption returns the client payment option that matches the network and asset
+	GetPaymentOption(network, asset string) *ClientPaymentOption
 }
 
 // PrivateKeySigner signs with a raw private key
 type PrivateKeySigner struct {
-	privateKey *ecdsa.PrivateKey
-	address    common.Address
+	privateKey     *ecdsa.PrivateKey
+	address        common.Address
+	paymentOptions []ClientPaymentOption
 }
 
-// NewPrivateKeySigner creates a signer from a hex-encoded private key
-func NewPrivateKeySigner(privateKeyHex string) (*PrivateKeySigner, error) {
+// NewPrivateKeySigner creates a signer from a hex-encoded private key with explicit payment options
+func NewPrivateKeySigner(privateKeyHex string, options ...ClientPaymentOption) (*PrivateKeySigner, error) {
 	// Remove 0x prefix if present
 	privateKeyHex = strings.TrimPrefix(privateKeyHex, "0x")
 
@@ -55,11 +60,21 @@ func NewPrivateKeySigner(privateKeyHex string) (*PrivateKeySigner, error) {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidPrivateKey, err)
 	}
 
+	if len(options) == 0 {
+		return nil, fmt.Errorf("at least one payment option must be configured")
+	}
+
+	// Sort by priority
+	sort.Slice(options, func(i, j int) bool {
+		return options[i].Priority < options[j].Priority
+	})
+
 	address := crypto.PubkeyToAddress(privateKey.PublicKey)
 
 	return &PrivateKeySigner{
-		privateKey: privateKey,
-		address:    address,
+		privateKey:     privateKey,
+		address:        address,
+		paymentOptions: options,
 	}, nil
 }
 
@@ -68,14 +83,31 @@ func (s *PrivateKeySigner) GetAddress() string {
 }
 
 func (s *PrivateKeySigner) SupportsNetwork(network string) bool {
-	_, ok := NetworkChainIDs[network]
-	return ok
+	for _, opt := range s.paymentOptions {
+		if opt.Network == network {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *PrivateKeySigner) HasAsset(asset, network string) bool {
-	// This would normally check blockchain balance
-	// For now, assume we have the asset
-	return true
+	for _, opt := range s.paymentOptions {
+		if opt.Network == network && opt.Asset == asset && opt.Scheme == "eip3009" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *PrivateKeySigner) GetPaymentOption(network, asset string) *ClientPaymentOption {
+	for _, opt := range s.paymentOptions {
+		if opt.Network == network && opt.Asset == asset {
+			optCopy := opt
+			return &optCopy
+		}
+	}
+	return nil
 }
 
 func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
@@ -210,8 +242,8 @@ type MnemonicSigner struct {
 	*PrivateKeySigner
 }
 
-// NewMnemonicSigner creates a signer from a BIP-39 mnemonic phrase
-func NewMnemonicSigner(mnemonic string, derivationPath string) (*MnemonicSigner, error) {
+// NewMnemonicSigner creates a signer from a BIP-39 mnemonic phrase with explicit payment options
+func NewMnemonicSigner(mnemonic string, derivationPath string, options ...ClientPaymentOption) (*MnemonicSigner, error) {
 	if !bip39.IsMnemonicValid(mnemonic) {
 		return nil, ErrInvalidMnemonic
 	}
@@ -235,12 +267,22 @@ func NewMnemonicSigner(mnemonic string, derivationPath string) (*MnemonicSigner,
 		return nil, fmt.Errorf("failed to derive private key: %w", err)
 	}
 
+	if len(options) == 0 {
+		return nil, fmt.Errorf("at least one payment option must be configured")
+	}
+
+	// Sort by priority
+	sort.Slice(options, func(i, j int) bool {
+		return options[i].Priority < options[j].Priority
+	})
+
 	address := crypto.PubkeyToAddress(privateKey.PublicKey)
 
 	return &MnemonicSigner{
 		PrivateKeySigner: &PrivateKeySigner{
-			privateKey: privateKey,
-			address:    address,
+			privateKey:     privateKey,
+			address:        address,
+			paymentOptions: options,
 		},
 	}, nil
 }
@@ -250,8 +292,8 @@ type KeystoreSigner struct {
 	*PrivateKeySigner
 }
 
-// NewKeystoreSigner creates a signer from an encrypted keystore JSON
-func NewKeystoreSigner(keystoreJSON []byte, password string) (*KeystoreSigner, error) {
+// NewKeystoreSigner creates a signer from an encrypted keystore JSON with explicit payment options
+func NewKeystoreSigner(keystoreJSON []byte, password string, options ...ClientPaymentOption) (*KeystoreSigner, error) {
 	key, err := keystore.DecryptKey(keystoreJSON, password)
 	if err != nil {
 		if err == keystore.ErrDecrypt {
@@ -260,25 +302,50 @@ func NewKeystoreSigner(keystoreJSON []byte, password string) (*KeystoreSigner, e
 		return nil, fmt.Errorf("%w: %v", ErrInvalidKeystore, err)
 	}
 
+	if len(options) == 0 {
+		return nil, fmt.Errorf("at least one payment option must be configured")
+	}
+
+	// Sort by priority
+	sort.Slice(options, func(i, j int) bool {
+		return options[i].Priority < options[j].Priority
+	})
+
 	return &KeystoreSigner{
 		PrivateKeySigner: &PrivateKeySigner{
-			privateKey: key.PrivateKey,
-			address:    key.Address,
+			privateKey:     key.PrivateKey,
+			address:        key.Address,
+			paymentOptions: options,
 		},
 	}, nil
 }
 
 // MockSigner is a test signer that generates fake signatures
 type MockSigner struct {
-	address string
+	address        string
+	paymentOptions []ClientPaymentOption
 }
 
-// NewMockSigner creates a mock signer for testing
-func NewMockSigner(address string) *MockSigner {
+// NewMockSigner creates a mock signer for testing with explicit payment options
+func NewMockSigner(address string, options ...ClientPaymentOption) *MockSigner {
 	if !strings.HasPrefix(address, "0x") {
 		address = "0x" + address
 	}
-	return &MockSigner{address: address}
+
+	if len(options) == 0 {
+		// Default to Base USDC for testing
+		options = []ClientPaymentOption{AcceptUSDCBaseSepolia()}
+	}
+
+	// Sort by priority
+	sort.Slice(options, func(i, j int) bool {
+		return options[i].Priority < options[j].Priority
+	})
+
+	return &MockSigner{
+		address:        address,
+		paymentOptions: options,
+	}
 }
 
 func (m *MockSigner) GetAddress() string {
@@ -286,11 +353,31 @@ func (m *MockSigner) GetAddress() string {
 }
 
 func (m *MockSigner) SupportsNetwork(network string) bool {
-	return true
+	for _, opt := range m.paymentOptions {
+		if opt.Network == network {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *MockSigner) HasAsset(asset, network string) bool {
-	return true
+	for _, opt := range m.paymentOptions {
+		if opt.Network == network && opt.Asset == asset && opt.Scheme == "eip3009" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *MockSigner) GetPaymentOption(network, asset string) *ClientPaymentOption {
+	for _, opt := range m.paymentOptions {
+		if opt.Network == network && opt.Asset == asset {
+			optCopy := opt
+			return &optCopy
+		}
+	}
+	return nil
 }
 
 func (m *MockSigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {

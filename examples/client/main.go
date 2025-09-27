@@ -22,8 +22,12 @@ func main() {
 		serverURL = "http://localhost:8080"
 	}
 
-	// Create signer with your private key
-	signer, err := x402.NewPrivateKeySigner(privateKey)
+	// Create signer with your private key and explicit payment options
+	// Using Base Sepolia for testing
+	signer, err := x402.NewPrivateKeySigner(
+		privateKey,
+		x402.AcceptUSDCBaseSepolia(), // Accept USDC on Base Sepolia testnet
+	)
 	if err != nil {
 		log.Fatal("Failed to create signer:", err)
 	}

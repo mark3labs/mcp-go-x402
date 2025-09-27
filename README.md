@@ -46,8 +46,11 @@ import (
 )
 
 func main() {
-    // Create signer with your private key
-    signer, err := x402.NewPrivateKeySigner("YOUR_PRIVATE_KEY_HEX")
+    // Create signer with your private key and explicit payment options
+    signer, err := x402.NewPrivateKeySigner(
+        "YOUR_PRIVATE_KEY_HEX",
+        x402.AcceptUSDCBase(), // Accept USDC on Base mainnet
+    )
     if err != nil {
         log.Fatal(err)
     }
@@ -178,6 +181,13 @@ func premiumToolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.Call
 ### Basic Configuration
 
 ```go
+// Create signer with explicit payment options
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    x402.AcceptUSDCBase(),       // Accept USDC on Base
+    x402.AcceptUSDCBaseSepolia(), // Accept USDC on Base Sepolia (testnet)
+)
+
 config := x402.Config{
     ServerURL:        "https://server.example.com",
     Signer:           signer,
@@ -189,6 +199,11 @@ config := x402.Config{
 ### With Rate Limiting
 
 ```go
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    x402.AcceptUSDCBase(),
+)
+
 config := x402.Config{
     ServerURL:        "https://server.example.com",
     Signer:           signer,
@@ -312,7 +327,10 @@ http.ListenAndServe(":8080", nil)
 ### Private Key
 
 ```go
-signer, err := x402.NewPrivateKeySigner("0xYourPrivateKeyHex")
+signer, err := x402.NewPrivateKeySigner(
+    "0xYourPrivateKeyHex",
+    x402.AcceptUSDCBase(),       // Must specify at least one payment option
+)
 ```
 
 ### Mnemonic (BIP-39)
@@ -321,6 +339,7 @@ signer, err := x402.NewPrivateKeySigner("0xYourPrivateKeyHex")
 signer, err := x402.NewMnemonicSigner(
     "your twelve word mnemonic phrase here ...",
     "m/44'/60'/0'/0/0", // Optional: derivation path
+    x402.AcceptUSDCBase(),
 )
 ```
 
@@ -328,13 +347,52 @@ signer, err := x402.NewMnemonicSigner(
 
 ```go
 keystoreJSON, _ := os.ReadFile("keystore.json")
-signer, err := x402.NewKeystoreSigner(keystoreJSON, "password")
+signer, err := x402.NewKeystoreSigner(
+    keystoreJSON,
+    "password",
+    x402.AcceptUSDCBase(),
+)
+```
+
+### Multiple Payment Options with Priorities
+
+```go
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    // Priority 1: Prefer Base (cheap & fast)
+    x402.AcceptUSDCBase().WithPriority(1),
+    
+    // Priority 2: Fallback to Base Sepolia (testnet)
+    x402.AcceptUSDCBaseSepolia().WithPriority(2),
+)
+```
+
+### With Custom Limits
+
+```go
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    x402.AcceptUSDCBase()
+        .WithMaxAmount("100000")    // Max 0.1 USDC per payment
+        .WithMinBalance("1000000"), // Keep 1 USDC reserve
+)
 ```
 
 ### Custom Signer
 
 ```go
-type MyCustomSigner struct{}
+type MyCustomSigner struct {
+    paymentOptions []x402.ClientPaymentOption
+}
+
+func NewMyCustomSigner() *MyCustomSigner {
+    return &MyCustomSigner{
+        paymentOptions: []x402.ClientPaymentOption{
+            x402.AcceptUSDCBase(),
+            x402.AcceptUSDCBaseSepolia(),
+        },
+    }
+}
 
 func (s *MyCustomSigner) SignPayment(ctx context.Context, req x402.PaymentRequirement) (*x402.PaymentPayload, error) {
     // Your custom signing logic
@@ -346,12 +404,31 @@ func (s *MyCustomSigner) GetAddress() string {
 }
 
 func (s *MyCustomSigner) SupportsNetwork(network string) bool {
-    return network == "base" || network == "base-sepolia"
+    for _, opt := range s.paymentOptions {
+        if opt.Network == network {
+            return true
+        }
+    }
+    return false
 }
 
 func (s *MyCustomSigner) HasAsset(asset, network string) bool {
-    // Check if you have the required asset
-    return true
+    for _, opt := range s.paymentOptions {
+        if opt.Network == network && opt.Asset == asset {
+            return true
+        }
+    }
+    return false
+}
+
+func (s *MyCustomSigner) GetPaymentOption(network, asset string) *x402.ClientPaymentOption {
+    for _, opt := range s.paymentOptions {
+        if opt.Network == network && opt.Asset == asset {
+            optCopy := opt
+            return &optCopy
+        }
+    }
+    return nil
 }
 ```
 
@@ -362,7 +439,10 @@ func (s *MyCustomSigner) HasAsset(asset, network string) bool {
 ```go
 func TestMyMCPClient(t *testing.T) {
     // No real wallet needed for tests
-    signer := x402.NewMockSigner("0xTestWallet")
+    signer := x402.NewMockSigner(
+        "0xTestWallet",
+        x402.AcceptUSDCBaseSepolia(), // Mock signer for testing
+    )
     
     transport, _ := x402.New(x402.Config{
         ServerURL:        "https://test-server.example.com",
@@ -381,7 +461,10 @@ func TestMyMCPClient(t *testing.T) {
 ```go
 func TestPaymentFlow(t *testing.T) {
     // Create mock signer and recorder
-    signer := x402.NewMockSigner("0xTestWallet")
+    signer := x402.NewMockSigner(
+        "0xTestWallet",
+        x402.AcceptUSDCBaseSepolia(),
+    )
     recorder := x402.NewPaymentRecorder()
     
     transport, _ := x402.New(x402.Config{
