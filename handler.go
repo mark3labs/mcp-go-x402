@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sort"
 )
 
 // PaymentHandler handles x402 payment operations
@@ -124,22 +125,23 @@ func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*Pay
 		return nil, ErrNoAcceptablePayment
 	}
 
-	var best *PaymentRequirement
-	var bestAmount *big.Int
+	type candidate struct {
+		req      PaymentRequirement
+		priority int
+		amount   *big.Int
+	}
+
+	var candidates []candidate
 
 	for _, req := range accepts {
-		// Check if we support this network
-		if !h.signer.SupportsNetwork(req.Network) {
+		// Check if we support this network and asset
+		option := h.signer.GetPaymentOption(req.Network, req.Asset)
+		if option == nil {
 			continue
 		}
 
-		// Check if we have this asset
-		if !h.signer.HasAsset(req.Asset, req.Network) {
-			continue
-		}
-
-		// Check scheme (only support "exact" for now)
-		if req.Scheme != "exact" {
+		// Check scheme matches
+		if option.Scheme != req.Scheme {
 			continue
 		}
 
@@ -154,18 +156,37 @@ func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*Pay
 			continue
 		}
 
-		// Select the cheapest option
-		if best == nil || amount.Cmp(bestAmount) < 0 {
-			best = &req
-			bestAmount = amount
+		// Check if within client's max amount for this option
+		if option.MaxAmount != "" {
+			maxAmount := new(big.Int)
+			if _, ok := maxAmount.SetString(option.MaxAmount, 10); ok {
+				if amount.Cmp(maxAmount) > 0 {
+					// Required amount exceeds client's max for this option
+					continue
+				}
+			}
 		}
+
+		candidates = append(candidates, candidate{
+			req:      req,
+			priority: option.Priority,
+			amount:   amount,
+		})
 	}
 
-	if best == nil {
+	if len(candidates) == 0 {
 		return nil, ErrNoAcceptablePayment
 	}
 
-	return best, nil
+	// Sort by priority first, then by amount
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority < candidates[j].priority
+		}
+		return candidates[i].amount.Cmp(candidates[j].amount) < 0
+	})
+
+	return &candidates[0].req, nil
 }
 
 // GetMetrics returns budget metrics

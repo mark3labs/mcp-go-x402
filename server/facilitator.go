@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -28,6 +29,7 @@ type SupportedKind struct {
 type HTTPFacilitator struct {
 	baseURL string
 	client  *http.Client
+	verbose bool
 }
 
 // NewHTTPFacilitator creates a new HTTP-based facilitator client
@@ -40,11 +42,25 @@ func NewHTTPFacilitator(baseURL string) *HTTPFacilitator {
 	}
 }
 
+// SetVerbose enables verbose logging
+func (f *HTTPFacilitator) SetVerbose(verbose bool) {
+	f.verbose = verbose
+}
+
 func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, requirement *PaymentRequirement) (*VerifyResponse, error) {
 	req := &VerifyRequest{
 		X402Version:         1,
 		PaymentPayload:      payment,
 		PaymentRequirements: requirement,
+	}
+
+	if f.verbose {
+		log.Printf("[Facilitator] Sending verify request to %s/verify", f.baseURL)
+		log.Printf("[Facilitator] Payment: from=%s, to=%s, value=%s, network=%s",
+			payment.Payload.Authorization.From,
+			payment.Payload.Authorization.To,
+			payment.Payload.Authorization.Value,
+			payment.Network)
 	}
 
 	body, err := json.Marshal(req)
@@ -60,6 +76,9 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 
 	resp, err := f.client.Do(httpReq)
 	if err != nil {
+		if f.verbose {
+			log.Printf("[Facilitator] Verify request failed: %v", err)
+		}
 		return nil, fmt.Errorf("verify request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -77,12 +96,23 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 			}
 		}
 
+		if f.verbose {
+			log.Printf("[Facilitator] Verify failed with status %d: %s", resp.StatusCode, errMsg)
+		}
 		return nil, fmt.Errorf("verify failed with status %d: %s", resp.StatusCode, errMsg)
 	}
 
 	var verifyResp VerifyResponse
 	if err := json.NewDecoder(resp.Body).Decode(&verifyResp); err != nil {
 		return nil, fmt.Errorf("decode verify response: %w", err)
+	}
+
+	if f.verbose {
+		if verifyResp.IsValid {
+			log.Printf("[Facilitator] Payment verified: valid=true, payer=%s", verifyResp.Payer)
+		} else {
+			log.Printf("[Facilitator] Payment rejected: valid=false, reason=%s", verifyResp.InvalidReason)
+		}
 	}
 
 	return &verifyResp, nil

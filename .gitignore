@@ -34,3 +34,8 @@ Thumbs.db
 # Test coverage
 *.coverprofile
 coverage.html
+
+# Example binaries
+examples/client/client
+examples/server/server
+examples/client/basic-x402

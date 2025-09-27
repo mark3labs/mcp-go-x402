@@ -5,46 +5,87 @@ This example demonstrates how to create an MCP server that requires x402 payment
 ## Features
 
 - **Payment-Required Tools**: The server hosts a `search` tool that requires 0.01 USDC per query
+- **Free Tools**: Includes an `echo` tool to demonstrate mixed free/paid tools
 - **x402 Protocol Support**: Full implementation of the x402 HTTP micropayment protocol
 - **Facilitator Integration**: Connects to an x402 facilitator service for payment verification
+- **Testnet Support**: Optional testnet tools for development
 
-## Running the Server
-
-### Prerequisites
-
-1. An x402 facilitator service (can be local or remote)
-2. A wallet address to receive payments
-3. Network and asset configuration (defaults to Base Sepolia with USDC)
-
-### Environment Variables
+## Quick Start
 
 ```bash
-# Facilitator URL (defaults to https://facilitator.x402.rs)
-export X402_FACILITATOR_URL=https://facilitator.x402.rs
+# Build the server
+go build -o server
 
-# Wallet to receive payments
-export X402_PAY_TO=0xYourWalletAddress
+# Run with your wallet address (required)
+./server -pay-to 0xYourWalletAddress
 
-# Token contract address (defaults to USDC on Base mainnet)
-export X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+# Enable testnet tools
+./server -pay-to 0xYourWallet -testnet
 
-# Network (defaults to base)
-export X402_NETWORK=base
-
-# Server port (defaults to 8080)
-export PORT=8080
+# Run in verify-only mode (for testing without settlement)
+./server -pay-to 0xTestWallet -verify-only
 ```
 
-### Start the Server
+## Command-line Flags
 
-```bash
-cd examples/server
-go run main.go
+```
+Usage: ./server [flags]
+
+Flags:
+  -port string
+        Port to listen on (default "8080")
+  -facilitator string
+        x402 facilitator URL (default "https://facilitator.x402.rs")
+  -pay-to string
+        Payment recipient wallet address (required)
+  -verify-only
+        Only verify payments, don't settle on-chain
+  -testnet
+        Enable testnet payment options
 ```
 
-The server will start on port 8080 (or the specified PORT). 
+The server will start on the specified port (default 8080).
 The MCP endpoint is available at the root URL (e.g., `http://localhost:8080`)
 The server internally handles `/mcp` and other MCP protocol routes.
+
+## Available Tools
+
+### Free Tools
+- **echo** - Simple echo tool that returns the input message
+  - Parameters: `message` (string, required)
+
+### Paid Tools  
+- **search** - Search for information on any topic
+  - Cost: 0.01 USDC on Base mainnet
+  - Parameters: `query` (string, required), `max_results` (number, optional)
+
+### Testnet Tools (with `-testnet` flag)
+- **test-feature** - Test feature for development
+  - Cost: 0.001 USDC on Base Sepolia
+  - Parameters: `input` (string, required)
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Start server with payment recipient
+./server -pay-to 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1
+```
+
+### Development Setup
+
+```bash
+# Testnet with verify-only mode (no real settlement)
+./server -pay-to 0xTestWallet -testnet -verify-only -port 3000
+```
+
+### Production Setup
+
+```bash
+# Production with real wallet
+./server -pay-to 0xYourProductionWallet -facilitator https://facilitator.production.com
+```
 
 ## Testing the Server
 
@@ -72,13 +113,18 @@ This will return a 402 Payment Required response with payment requirements.
 
 ### 2. With x402 Client
 
-Use the x402 MCP client from the basic example to make paid requests:
+Use the x402 MCP client to make paid requests:
 
 ```bash
-# From the examples/basic directory
+# From the examples/client directory
+./client -key YOUR_PRIVATE_KEY -server http://localhost:8080
+
+# Or with environment variable
 export WALLET_PRIVATE_KEY=your_private_key
-export MCP_SERVER_URL=http://localhost:8080
-go run main.go
+./client -server http://localhost:8080
+
+# With verbose output to see payment flow
+./client -v -server http://localhost:8080
 ```
 
 Note: The client should connect to the root URL (e.g., `http://localhost:8080`), not `/mcp`. 
@@ -105,31 +151,15 @@ srv.AddTool(
     freeToolHandler,
 )
 
-// Add another paid tool
+// Add a paid tool with multiple payment options
 srv.AddPayableTool(
     mcp.NewTool("premium-tool",
         mcp.WithDescription("Premium feature")),
     premiumHandler,
-    "50000", // 0.05 USDC
-    "Premium feature access",
-)
-```
-
-### Custom Payment Requirements
-
-```go
-customReq := &x402server.PaymentRequirement{
-    Scheme:            "exact",
-    Network:           "base-sepolia",
-    MaxAmountRequired: "100000", // 0.1 USDC
-    Asset:             "0xUSDC",
-    PayTo:             "0xYourWallet",
-    Description:       "Advanced processing",
-    MaxTimeoutSeconds: 120,
-}
-
-srv.AddPayableToolWithRequirement(
-    tool, handler, customReq,
+    // Accept USDC on Base mainnet
+    x402server.RequireUSDCBase(payTo, "50000", "Premium feature - 0.05 USDC"),
+    // Also accept on Base Sepolia (discounted for testnet)
+    x402server.RequireUSDCBaseSepolia(payTo, "10000", "Premium feature (testnet) - 0.01 USDC"),
 )
 ```
 

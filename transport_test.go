@@ -63,8 +63,8 @@ func TestX402Transport_Basic(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create transport with mock signer
-	signer := NewMockSigner("0xTestWallet")
+	// Create transport with mock signer that supports Base Sepolia
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	recorder := NewPaymentRecorder()
 
 	trans, err := New(Config{
@@ -128,7 +128,7 @@ func TestX402Transport_ExceedsLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 
 	trans, err := New(Config{
 		ServerURL:        server.URL,
@@ -190,7 +190,7 @@ func TestX402Transport_RateLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 
 	trans, err := New(Config{
 		ServerURL:        server.URL,
@@ -265,7 +265,7 @@ func TestX402Transport_PaymentCallback(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	callbackCalled := false
 
 	trans, err := New(Config{
@@ -338,7 +338,7 @@ func TestX402Transport_MultipleRequests(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
 		ServerURL:        server.URL,
 		Signer:           signer,
@@ -412,7 +412,7 @@ func TestX402Transport_SendRequestWithTimeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
 		ServerURL:        server.URL,
 		Signer:           signer,
@@ -454,7 +454,7 @@ func TestX402Transport_ResponseError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
 		ServerURL:        server.URL,
 		Signer:           signer,
@@ -478,7 +478,7 @@ func TestX402Transport_ResponseError(t *testing.T) {
 }
 
 func TestX402Transport_InvalidURL(t *testing.T) {
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 
 	// Test invalid URL
 	_, err := New(Config{
@@ -490,7 +490,7 @@ func TestX402Transport_InvalidURL(t *testing.T) {
 }
 
 func TestX402Transport_NonExistentServer(t *testing.T) {
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
 		ServerURL:        "http://localhost:1", // Port 1 is typically unused
 		Signer:           signer,
@@ -557,7 +557,7 @@ func TestX402Transport_SetNotificationHandler(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
 		ServerURL:        server.URL,
 		Signer:           signer,
@@ -601,7 +601,7 @@ func TestX402Transport_SetRequestHandler(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
 		ServerURL:        server.URL,
 		Signer:           signer,
@@ -647,7 +647,7 @@ func TestX402Transport_PaymentCallbackRejection(t *testing.T) {
 	}))
 	defer server.Close()
 
-	signer := NewMockSigner("0xTestWallet")
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 
 	trans, err := New(Config{
 		ServerURL:        server.URL,

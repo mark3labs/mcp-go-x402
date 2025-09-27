@@ -2,53 +2,41 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
-	"os"
 
 	x402server "github.com/mark3labs/mcp-go-x402/server"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func main() {
-	// Configure x402 server
-	// You can set the facilitator URL via environment variable or config
-	facilitatorURL := os.Getenv("X402_FACILITATOR_URL")
-	if facilitatorURL == "" {
-		facilitatorURL = "https://facilitator.x402.rs" // Production facilitator
-	}
+	// Define command-line flags
+	var (
+		port           = flag.String("port", "8080", "Port to listen on")
+		facilitatorURL = flag.String("facilitator", "https://facilitator.x402.rs", "x402 facilitator URL")
+		payTo          = flag.String("pay-to", "", "Payment recipient wallet address (required)")
+		verifyOnly     = flag.Bool("verify-only", false, "Only verify payments, don't settle on-chain")
+		testnet        = flag.Bool("testnet", false, "Enable testnet payment options")
+		verbose        = flag.Bool("v", false, "Verbose output (show requests and payment processing)")
+	)
+	flag.Parse()
 
-	// Get wallet configuration from environment
-	payTo := os.Getenv("X402_PAY_TO")
-	if payTo == "" {
-		payTo = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C" // Default test wallet
+	// Check required flags
+	if *payTo == "" {
+		log.Fatal("Error: -pay-to flag is required. Please provide a wallet address to receive payments.")
 	}
-
-	asset := os.Getenv("X402_ASSET")
-	if asset == "" {
-		asset = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" // USDC on Base mainnet
-	}
-
-	network := os.Getenv("X402_NETWORK")
-	if network == "" {
-		network = "base" // Base mainnet
-	}
-
-	// Check if we should verify only (not settle)
-	verifyOnly := os.Getenv("X402_VERIFY_ONLY") == "true"
 
 	config := &x402server.Config{
-		FacilitatorURL: facilitatorURL,
-		DefaultPayTo:   payTo,
-		DefaultAsset:   asset,
-		DefaultNetwork: network,
-		VerifyOnly:     verifyOnly,
+		FacilitatorURL: *facilitatorURL,
+		VerifyOnly:     *verifyOnly,
+		Verbose:        *verbose,
 	}
 
 	// Create x402 server
 	srv := x402server.NewX402Server("x402-search-server", "1.0.0", config)
 
-	// Add a paid search tool (modeled after basic example)
+	// Add a paid search tool using the helper function
 	srv.AddPayableTool(
 		mcp.NewTool("search",
 			mcp.WithDescription("Search for information on any topic"),
@@ -56,8 +44,7 @@ func main() {
 			mcp.WithNumber("max_results", mcp.Description("Maximum number of results to return")),
 		),
 		searchHandler,
-		"10000", // 0.01 USDC (6 decimals)
-		"Premium search service - provides high-quality search results",
+		x402server.RequireUSDCBase(*payTo, "10000", "Premium search service - 0.01 USDC"),
 	)
 
 	// Add a free echo tool to demonstrate non-paid tools
@@ -69,30 +56,41 @@ func main() {
 		echoHandler,
 	)
 
-	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	// For development/testing: Add a tool with testnet payment option
+	if *testnet {
+		srv.AddPayableTool(
+			mcp.NewTool("test-feature",
+				mcp.WithDescription("Test feature for development"),
+				mcp.WithString("input", mcp.Required(), mcp.Description("Test input")),
+			),
+			testFeatureHandler,
+			x402server.RequireUSDCBaseSepolia(*payTo, "1000", "Test payment on Base Sepolia - 0.001 USDC"),
+		)
 	}
 
-	log.Printf("Starting x402 MCP server on :%s", port)
-	log.Printf("Server URL: http://localhost:%s", port)
-	log.Printf("Facilitator URL: %s", facilitatorURL)
-	log.Printf("Payment recipient: %s", payTo)
-	log.Printf("Asset: %s", asset)
-	log.Printf("Network: %s", network)
-	log.Printf("Verify Only Mode: %v", verifyOnly)
+	// Start server
+	log.Printf("Starting x402 MCP server on :%s", *port)
+	log.Printf("Server URL: http://localhost:%s", *port)
+	log.Printf("Facilitator URL: %s", *facilitatorURL)
+	log.Printf("Payment recipient: %s", *payTo)
+	log.Printf("Verify Only Mode: %v", *verifyOnly)
+	if *verbose {
+		log.Printf("Verbose Mode: ENABLED")
+	}
 	log.Println("Tools:")
-	log.Println("  - search (0.01 USDC per query)")
+	log.Println("  - search (paid): 0.01 USDC on Base")
 	log.Println("  - echo (free)")
+	if *testnet {
+		log.Println("  - test-feature (testnet): 0.001 USDC on Base Sepolia")
+	}
 	log.Println("")
 	log.Println("Connect with client using:")
-	log.Printf("  export MCP_SERVER_URL=http://localhost:%s", port)
-	if verifyOnly {
+	log.Printf("  ./client -server http://localhost:%s", *port)
+	if *verifyOnly {
 		log.Println("  (Running in verify-only mode - payments will be verified but not settled)")
 	}
 
-	if err := srv.Start(":" + port); err != nil {
+	if err := srv.Start(":" + *port); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -143,6 +141,23 @@ func echoHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 
 	// Simply echo back the message
 	response := fmt.Sprintf("Echo: %s", message)
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.NewTextContent(response),
+		},
+	}, nil
+}
+
+func testFeatureHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	input := request.GetString("input", "")
+
+	if input == "" {
+		return nil, fmt.Errorf("input parameter is required")
+	}
+
+	// Test feature response
+	response := fmt.Sprintf("Test feature processed: %s", input)
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{

@@ -46,8 +46,11 @@ import (
 )
 
 func main() {
-    // Create signer with your private key
-    signer, err := x402.NewPrivateKeySigner("YOUR_PRIVATE_KEY_HEX")
+    // Create signer with your private key and explicit payment options
+    signer, err := x402.NewPrivateKeySigner(
+        "YOUR_PRIVATE_KEY_HEX",
+        x402.AcceptUSDCBase(), // Accept USDC on Base mainnet
+    )
     if err != nil {
         log.Fatal(err)
     }
@@ -110,9 +113,7 @@ func main() {
     // Configure x402 server
     config := &x402server.Config{
         FacilitatorURL:  "https://facilitator.x402.rs",
-        DefaultPayTo:    "0xYourWallet",
-        DefaultAsset:    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
-        DefaultNetwork:  "base",
+        VerifyOnly:      false, // Set to true for testing without settlement
     }
     
     // Create x402 server
@@ -125,14 +126,16 @@ func main() {
         freeToolHandler,
     )
     
-    // Add a paid tool (0.01 USDC per call)
+    // Add a paid tool with multiple payment options
     srv.AddPayableTool(
         mcp.NewTool("premium-tool",
             mcp.WithDescription("Premium feature"),
             mcp.WithString("input", mcp.Required())),
         premiumToolHandler,
-        "10000", // 0.01 USDC (6 decimals)
-        "Access to premium feature",
+    // Option 1: Pay with USDC on Base
+    x402server.RequireUSDCBase("0xYourWallet", "10000", "Premium feature via Base"),
+    // Option 2: Pay with USDC on Base Sepolia (testnet)
+    x402server.RequireUSDCBaseSepolia("0xYourWallet", "5000", "Premium feature via Base Sepolia (testnet)"),
     )
     
     // Start server
@@ -162,6 +165,13 @@ func premiumToolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.Call
 ### Basic Configuration
 
 ```go
+// Create signer with explicit payment options
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    x402.AcceptUSDCBase(),       // Accept USDC on Base
+    x402.AcceptUSDCBaseSepolia(), // Accept USDC on Base Sepolia (testnet)
+)
+
 config := x402.Config{
     ServerURL:        "https://server.example.com",
     Signer:           signer,
@@ -173,6 +183,11 @@ config := x402.Config{
 ### With Rate Limiting
 
 ```go
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    x402.AcceptUSDCBase(),
+)
+
 config := x402.Config{
     ServerURL:        "https://server.example.com",
     Signer:           signer,
@@ -226,34 +241,41 @@ config := x402.Config{
 ```go
 config := &x402server.Config{
     FacilitatorURL:  "https://facilitator.x402.rs",
-    DefaultPayTo:    "0xYourWallet",
-    DefaultAsset:    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
-    DefaultNetwork:  "base",
     VerifyOnly:      false, // Set to true for testing without settlement
 }
 ```
 
-### Custom Payment Requirements
+### Multiple Payment Options
+
+Servers can now offer multiple payment options per tool, allowing clients to choose their preferred network or take advantage of discounts:
 
 ```go
-// Add tool with custom payment requirements
-customReq := &x402server.PaymentRequirement{
-    Scheme:            "exact",
-    Network:           "base",
-    MaxAmountRequired: "50000", // 0.05 USDC
-    Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    PayTo:             "0xYourWallet",
-    Description:       "Advanced processing",
-    MimeType:          "application/json",
-    MaxTimeoutSeconds: 120,
-    Extra: map[string]string{
-        "name":    "USD Coin",  // EIP-712 domain name for USDC
-        "version": "2",
+srv.AddPayableTool(
+    mcp.NewTool("analytics",
+        mcp.WithDescription("Advanced analytics"),
+        mcp.WithString("query", mcp.Required())),
+    analyticsHandler,
+    // Base mainnet - standard price
+    x402server.RequireUSDCBase("0xYourWallet", "100000", "Analytics via Base - 0.1 USDC"),
+    // Base Sepolia - testnet option
+    x402server.RequireUSDCBaseSepolia("0xYourWallet", "50000", "Analytics via Base Sepolia (testnet) - 0.05 USDC"),
+    // Custom network example - Ethereum mainnet
+    x402server.PaymentRequirement{
+        Scheme:            "exact",
+        Network:           "ethereum",
+        Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC on Ethereum
+        PayTo:             "0xYourWallet",
+        MaxAmountRequired: "100000", // 0.1 USDC
+        Description:       "Analytics via Ethereum",
+        MaxTimeoutSeconds: 60,
     },
-}
-
-srv.AddPayableToolWithRequirement(tool, handler, customReq)
+)
 ```
+
+When a client requests a paid tool without payment, they receive all available payment options and can choose the one that works best for them based on:
+- Network preference (gas fees, speed)
+- Available balance on different chains
+- Price differences (discounts for certain networks)
 
 ### Using with Existing MCP Server
 
@@ -275,7 +297,10 @@ http.ListenAndServe(":8080", nil)
 ### Private Key
 
 ```go
-signer, err := x402.NewPrivateKeySigner("0xYourPrivateKeyHex")
+signer, err := x402.NewPrivateKeySigner(
+    "0xYourPrivateKeyHex",
+    x402.AcceptUSDCBase(),       // Must specify at least one payment option
+)
 ```
 
 ### Mnemonic (BIP-39)
@@ -284,6 +309,7 @@ signer, err := x402.NewPrivateKeySigner("0xYourPrivateKeyHex")
 signer, err := x402.NewMnemonicSigner(
     "your twelve word mnemonic phrase here ...",
     "m/44'/60'/0'/0/0", // Optional: derivation path
+    x402.AcceptUSDCBase(),
 )
 ```
 
@@ -291,13 +317,52 @@ signer, err := x402.NewMnemonicSigner(
 
 ```go
 keystoreJSON, _ := os.ReadFile("keystore.json")
-signer, err := x402.NewKeystoreSigner(keystoreJSON, "password")
+signer, err := x402.NewKeystoreSigner(
+    keystoreJSON,
+    "password",
+    x402.AcceptUSDCBase(),
+)
+```
+
+### Multiple Payment Options with Priorities
+
+```go
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    // Priority 1: Prefer Base (cheap & fast)
+    x402.AcceptUSDCBase().WithPriority(1),
+    
+    // Priority 2: Fallback to Base Sepolia (testnet)
+    x402.AcceptUSDCBaseSepolia().WithPriority(2),
+)
+```
+
+### With Custom Limits
+
+```go
+signer, err := x402.NewPrivateKeySigner(
+    privateKey,
+    x402.AcceptUSDCBase()
+        .WithMaxAmount("100000")    // Max 0.1 USDC per payment
+        .WithMinBalance("1000000"), // Keep 1 USDC reserve
+)
 ```
 
 ### Custom Signer
 
 ```go
-type MyCustomSigner struct{}
+type MyCustomSigner struct {
+    paymentOptions []x402.ClientPaymentOption
+}
+
+func NewMyCustomSigner() *MyCustomSigner {
+    return &MyCustomSigner{
+        paymentOptions: []x402.ClientPaymentOption{
+            x402.AcceptUSDCBase(),
+            x402.AcceptUSDCBaseSepolia(),
+        },
+    }
+}
 
 func (s *MyCustomSigner) SignPayment(ctx context.Context, req x402.PaymentRequirement) (*x402.PaymentPayload, error) {
     // Your custom signing logic
@@ -309,12 +374,31 @@ func (s *MyCustomSigner) GetAddress() string {
 }
 
 func (s *MyCustomSigner) SupportsNetwork(network string) bool {
-    return network == "base" || network == "base-sepolia"
+    for _, opt := range s.paymentOptions {
+        if opt.Network == network {
+            return true
+        }
+    }
+    return false
 }
 
 func (s *MyCustomSigner) HasAsset(asset, network string) bool {
-    // Check if you have the required asset
-    return true
+    for _, opt := range s.paymentOptions {
+        if opt.Network == network && opt.Asset == asset {
+            return true
+        }
+    }
+    return false
+}
+
+func (s *MyCustomSigner) GetPaymentOption(network, asset string) *x402.ClientPaymentOption {
+    for _, opt := range s.paymentOptions {
+        if opt.Network == network && opt.Asset == asset {
+            optCopy := opt
+            return &optCopy
+        }
+    }
+    return nil
 }
 ```
 
@@ -325,7 +409,10 @@ func (s *MyCustomSigner) HasAsset(asset, network string) bool {
 ```go
 func TestMyMCPClient(t *testing.T) {
     // No real wallet needed for tests
-    signer := x402.NewMockSigner("0xTestWallet")
+    signer := x402.NewMockSigner(
+        "0xTestWallet",
+        x402.AcceptUSDCBaseSepolia(), // Mock signer for testing
+    )
     
     transport, _ := x402.New(x402.Config{
         ServerURL:        "https://test-server.example.com",
@@ -344,7 +431,10 @@ func TestMyMCPClient(t *testing.T) {
 ```go
 func TestPaymentFlow(t *testing.T) {
     // Create mock signer and recorder
-    signer := x402.NewMockSigner("0xTestWallet")
+    signer := x402.NewMockSigner(
+        "0xTestWallet",
+        x402.AcceptUSDCBaseSepolia(),
+    )
     recorder := x402.NewPaymentRecorder()
     
     transport, _ := x402.New(x402.Config{
@@ -369,12 +459,12 @@ func TestPaymentFlow(t *testing.T) {
 
 ## Supported Networks
 
-- `base` - Base Mainnet
-- `base-sepolia` - Base Sepolia Testnet
-- `avalanche` - Avalanche C-Chain
-- `avalanche-fuji` - Avalanche Fuji Testnet
-- `ethereum` - Ethereum Mainnet
-- `sepolia` - Ethereum Sepolia Testnet
+Currently, the library includes built-in helper functions for:
+
+- `base` - Base Mainnet (via `AcceptUSDCBase()`)
+- `base-sepolia` - Base Sepolia Testnet (via `AcceptUSDCBaseSepolia()`)
+
+Additional networks can be supported by manually configuring `ClientPaymentOption` objects with the appropriate network, asset, and scheme parameters.
 
 ## Security Considerations
 
@@ -387,8 +477,8 @@ func TestPaymentFlow(t *testing.T) {
 
 See the [examples](./examples) directory for more detailed examples:
 
-- [Client](./examples/client/main.go) - Simple client that can pay for tool use
-- [Server](./examples/server/main.go) - Server that collects payments for tool use
+- [Client](./examples/client/) - Simple client that can pay for tool use (see [main.go](./examples/client/main.go))
+- [Server](./examples/server/) - Server that collects payments for tool use (see [main.go](./examples/server/main.go))
 
 ## Architecture
 
@@ -418,5 +508,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Acknowledgments
 
 - [MCP-Go](https://github.com/mark3labs/mcp-go) for the excellent MCP implementation
-- [x402 Protocol](https://github.com/coinbase/x402) for the payment specification
+- [x402 Protocol](https://x402.org) ([GitHub](https://github.com/coinbase/x402)) for the payment specification
 - [go-ethereum](https://github.com/ethereum/go-ethereum) for crypto utilities
