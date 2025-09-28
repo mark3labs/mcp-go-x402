@@ -69,9 +69,6 @@ type X402Transport struct {
 type Config struct {
 	ServerURL        string
 	Signer           PaymentSigner
-	MaxPaymentAmount string
-	AutoPayThreshold string
-	RateLimits       *RateLimits
 	PaymentCallback  func(amount *big.Int, resource string) bool
 	HTTPClient       *http.Client
 	OnPaymentAttempt func(PaymentEvent)
@@ -87,10 +84,7 @@ func New(config Config) (*X402Transport, error) {
 	}
 
 	handlerConfig := &HandlerConfig{
-		MaxPaymentAmount: config.MaxPaymentAmount,
-		AutoPayThreshold: config.AutoPayThreshold,
-		RateLimits:       config.RateLimits,
-		PaymentCallback:  config.PaymentCallback,
+		PaymentCallback: config.PaymentCallback,
 	}
 
 	handler, err := NewPaymentHandler(config.Signer, handlerConfig)
@@ -599,11 +593,6 @@ func (t *X402Transport) GetSessionId() string {
 		}
 	}
 	return ""
-}
-
-// GetMetrics returns payment metrics
-func (t *X402Transport) GetMetrics() BudgetMetrics {
-	return t.handler.GetMetrics()
 }
 
 // Helper methods for event recording

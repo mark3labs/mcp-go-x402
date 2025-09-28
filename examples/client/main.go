@@ -70,10 +70,8 @@ func main() {
 
 	// Create x402 transport with optional verbose logging
 	config := x402.Config{
-		ServerURL:        *serverURL,
-		Signer:           signer,
-		MaxPaymentAmount: "1000000", // 1 USDC max per request
-		AutoPayThreshold: "100000",  // Auto-pay up to 0.1 USDC
+		ServerURL: *serverURL,
+		Signer:    signer,
 	}
 
 	if *verbose {

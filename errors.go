@@ -8,9 +8,6 @@ import (
 var (
 	// Payment errors
 	ErrPaymentRequired     = errors.New("payment required")
-	ErrAmountExceedsLimit  = errors.New("payment amount exceeds configured limit")
-	ErrBudgetExceeded      = errors.New("payment would exceed budget limit")
-	ErrRateLimitExceeded   = errors.New("payment rate limit exceeded")
 	ErrNoAcceptablePayment = errors.New("no acceptable payment method found")
 	ErrSigningFailed       = errors.New("failed to sign payment")
 	ErrInvalidPaymentReqs  = errors.New("invalid payment requirements")

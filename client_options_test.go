@@ -123,10 +123,7 @@ func TestPaymentSelection(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		handler, err := NewPaymentHandler(signer, &HandlerConfig{
-			MaxPaymentAmount: "1000000",
-			AutoPayThreshold: "100000",
-		})
+		handler, err := NewPaymentHandler(signer, &HandlerConfig{})
 		require.NoError(t, err)
 
 		// Server accepts both options
@@ -158,10 +155,7 @@ func TestPaymentSelection(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		handler, err := NewPaymentHandler(signer, &HandlerConfig{
-			MaxPaymentAmount: "1000000",
-			AutoPayThreshold: "100000",
-		})
+		handler, err := NewPaymentHandler(signer, &HandlerConfig{})
 		require.NoError(t, err)
 
 		// Server accepts both with different prices
@@ -193,10 +187,7 @@ func TestPaymentSelection(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		handler, err := NewPaymentHandler(signer, &HandlerConfig{
-			MaxPaymentAmount: "1000000",
-			AutoPayThreshold: "100000",
-		})
+		handler, err := NewPaymentHandler(signer, &HandlerConfig{})
 		require.NoError(t, err)
 
 		// Server requires more than Base max

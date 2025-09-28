@@ -9,17 +9,13 @@ import (
 
 // PaymentHandler handles x402 payment operations
 type PaymentHandler struct {
-	signer        PaymentSigner
-	budgetManager *BudgetManager
-	config        *HandlerConfig
+	signer PaymentSigner
+	config *HandlerConfig
 }
 
 // HandlerConfig configures the payment handler
 type HandlerConfig struct {
-	MaxPaymentAmount string
-	AutoPayThreshold string // Automatically pay if below this amount
-	RateLimits       *RateLimits
-	PaymentCallback  func(amount *big.Int, resource string) bool
+	PaymentCallback func(amount *big.Int, resource string) bool
 }
 
 // NewPaymentHandler creates a new payment handler
@@ -29,21 +25,12 @@ func NewPaymentHandler(signer PaymentSigner, config *HandlerConfig) (*PaymentHan
 	}
 
 	if config == nil {
-		config = &HandlerConfig{
-			MaxPaymentAmount: "1000000", // Default 1 USDC
-			AutoPayThreshold: "100000",  // Default 0.1 USDC
-		}
-	}
-
-	budgetManager, err := NewBudgetManager(config.MaxPaymentAmount, config.RateLimits)
-	if err != nil {
-		return nil, err
+		config = &HandlerConfig{}
 	}
 
 	return &PaymentHandler{
-		signer:        signer,
-		budgetManager: budgetManager,
-		config:        config,
+		signer: signer,
+		config: config,
 	}, nil
 }
 
@@ -59,29 +46,12 @@ func (h *PaymentHandler) ShouldPay(req PaymentRequirement) (bool, error) {
 		return false, fmt.Errorf("payment amount must be positive: %s", req.MaxAmountRequired)
 	}
 
-	// Check budget limits
-	if err := h.budgetManager.CanSpend(amount, req.Resource); err != nil {
-		return false, err
-	}
-
-	// Check auto-pay threshold
-	if h.config.AutoPayThreshold != "" {
-		threshold := new(big.Int)
-		if _, ok := threshold.SetString(h.config.AutoPayThreshold, 10); !ok {
-			return false, fmt.Errorf("invalid auto-pay threshold: %s", h.config.AutoPayThreshold)
-		}
-
-		if amount.Cmp(threshold) <= 0 {
-			return true, nil
-		}
-	}
-
-	// Use callback if provided and amount exceeds auto-pay threshold
+	// Use callback if provided
 	if h.config.PaymentCallback != nil {
 		return h.config.PaymentCallback(amount, req.Resource), nil
 	}
 
-	// Default: pay if within max amount
+	// Default: approve payment
 	return true, nil
 }
 
@@ -108,13 +78,6 @@ func (h *PaymentHandler) CreatePayment(ctx context.Context, reqs PaymentRequirem
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign payment: %w", err)
 	}
-
-	// Record the payment
-	amount := new(big.Int)
-	if _, ok := amount.SetString(selected.MaxAmountRequired, 10); !ok {
-		return nil, fmt.Errorf("invalid payment amount for recording: %s", selected.MaxAmountRequired)
-	}
-	h.budgetManager.RecordPayment(amount, selected.Resource)
 
 	return payment, nil
 }
@@ -187,9 +150,4 @@ func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*Pay
 	})
 
 	return &candidates[0].req, nil
-}
-
-// GetMetrics returns budget metrics
-func (h *PaymentHandler) GetMetrics() BudgetMetrics {
-	return h.budgetManager.GetMetrics()
 }

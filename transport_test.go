@@ -68,10 +68,8 @@ func TestX402Transport_Basic(t *testing.T) {
 	recorder := NewPaymentRecorder()
 
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
-		AutoPayThreshold: "5000",
+		ServerURL: server.URL,
+		Signer:    signer,
 	})
 	require.NoError(t, err)
 
@@ -131,10 +129,12 @@ func TestX402Transport_ExceedsLimit(t *testing.T) {
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000", // Limit is 10000
-		AutoPayThreshold: "5000",
+		ServerURL: server.URL,
+		Signer:    signer,
+		PaymentCallback: func(amount *big.Int, resource string) bool {
+			// Reject payments over 10000
+			return amount.Cmp(big.NewInt(10000)) <= 0
+		},
 	})
 	require.NoError(t, err)
 
@@ -147,85 +147,7 @@ func TestX402Transport_ExceedsLimit(t *testing.T) {
 
 	_, err = trans.SendRequest(ctx, request)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "exceeds")
-}
-
-func TestX402Transport_RateLimit(t *testing.T) {
-	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-
-		if r.Header.Get("X-PAYMENT") == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusPaymentRequired)
-			_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
-				X402Version: 1,
-				Error:       "Payment required",
-				Accepts: []PaymentRequirement{
-					{
-						Scheme:            "exact",
-						Network:           "base-sepolia",
-						MaxAmountRequired: "100",
-						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-						PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
-						Resource:          r.URL.String(),
-						Description:       "Test",
-						MaxTimeoutSeconds: 60,
-						Extra: map[string]string{
-							"name":    "USDC",
-							"version": "2",
-						},
-					},
-				},
-			})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(transport.JSONRPCResponse{
-			ID:     mcp.NewRequestId(requestCount),
-			Result: json.RawMessage(`{"data":"test"}`),
-		})
-	}))
-	defer server.Close()
-
-	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
-
-	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
-		RateLimits: &RateLimits{
-			MaxPaymentsPerMinute: 2,
-		},
-	})
-	require.NoError(t, err)
-
-	ctx := context.Background()
-
-	// First two requests should succeed
-	for i := 0; i < 2; i++ {
-		request := transport.JSONRPCRequest{
-			ID:     mcp.NewRequestId(i + 1),
-			Method: "test.method",
-			Params: json.RawMessage(`{}`),
-		}
-
-		_, err := trans.SendRequest(ctx, request)
-		assert.NoError(t, err)
-	}
-
-	// Third request should fail due to rate limit
-	request := transport.JSONRPCRequest{
-		ID:     mcp.NewRequestId(3),
-		Method: "test.method",
-		Params: json.RawMessage(`{}`),
-	}
-
-	_, err = trans.SendRequest(ctx, request)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "rate limit")
+	assert.Contains(t, err.Error(), "payment declined")
 }
 
 func TestX402Transport_PaymentCallback(t *testing.T) {
@@ -269,10 +191,8 @@ func TestX402Transport_PaymentCallback(t *testing.T) {
 	callbackCalled := false
 
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "100000",
-		AutoPayThreshold: "5000", // Auto-pay below 5000
+		ServerURL: server.URL,
+		Signer:    signer,
 		PaymentCallback: func(amount *big.Int, resource string) bool {
 			callbackCalled = true
 			assert.Equal(t, "10000", amount.String())
@@ -340,10 +260,8 @@ func TestX402Transport_MultipleRequests(t *testing.T) {
 
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
-		AutoPayThreshold: "5000",
+		ServerURL: server.URL,
+		Signer:    signer,
 	})
 	require.NoError(t, err)
 
@@ -414,9 +332,8 @@ func TestX402Transport_SendRequestWithTimeout(t *testing.T) {
 
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
+		ServerURL: server.URL,
+		Signer:    signer,
 	})
 	require.NoError(t, err)
 
@@ -452,9 +369,8 @@ func TestX402Transport_ResponseError(t *testing.T) {
 
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
+		ServerURL: server.URL,
+		Signer:    signer,
 	})
 	require.NoError(t, err)
 
@@ -488,9 +404,8 @@ func TestX402Transport_InvalidURL(t *testing.T) {
 func TestX402Transport_NonExistentServer(t *testing.T) {
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
-		ServerURL:        "http://localhost:1", // Port 1 is typically unused
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
+		ServerURL: "http://localhost:1", // Port 1 is typically unused
+		Signer:    signer,
 		HTTPClient: &http.Client{
 			Timeout: 1 * time.Second,
 		},
@@ -555,9 +470,8 @@ func TestX402Transport_SetNotificationHandler(t *testing.T) {
 
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
+		ServerURL: server.URL,
+		Signer:    signer,
 	})
 	require.NoError(t, err)
 
@@ -599,9 +513,8 @@ func TestX402Transport_SetRequestHandler(t *testing.T) {
 
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "10000",
+		ServerURL: server.URL,
+		Signer:    signer,
 	})
 	require.NoError(t, err)
 
@@ -646,10 +559,8 @@ func TestX402Transport_PaymentCallbackRejection(t *testing.T) {
 	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
 
 	trans, err := New(Config{
-		ServerURL:        server.URL,
-		Signer:           signer,
-		MaxPaymentAmount: "100000",
-		AutoPayThreshold: "5000",
+		ServerURL: server.URL,
+		Signer:    signer,
 		PaymentCallback: func(amount *big.Int, resource string) bool {
 			return false // Reject payment
 		},
