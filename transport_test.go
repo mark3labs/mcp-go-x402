@@ -442,11 +442,7 @@ func TestX402Transport_ResponseError(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(transport.JSONRPCResponse{
 			ID: mcp.NewRequestId(1),
-			Error: &struct {
-				Code    int             `json:"code"`
-				Message string          `json:"message"`
-				Data    json.RawMessage `json:"data"`
-			}{
+			Error: &mcp.JSONRPCErrorDetails{
 				Code:    -32601,
 				Message: "Method not found",
 			},

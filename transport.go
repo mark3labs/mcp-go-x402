@@ -713,11 +713,7 @@ func (t *X402Transport) handleIncomingRequest(ctx context.Context, request trans
 		errorResponse := &transport.JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      request.ID,
-			Error: &struct {
-				Code    int             `json:"code"`
-				Message string          `json:"message"`
-				Data    json.RawMessage `json:"data"`
-			}{
+			Error: &mcp.JSONRPCErrorDetails{
 				Code:    mcp.METHOD_NOT_FOUND,
 				Message: fmt.Sprintf("no handler configured for method: %s", request.Method),
 			},
@@ -740,11 +736,7 @@ func (t *X402Transport) handleIncomingRequest(ctx context.Context, request trans
 			errorResponse := &transport.JSONRPCResponse{
 				JSONRPC: "2.0",
 				ID:      request.ID,
-				Error: &struct {
-					Code    int             `json:"code"`
-					Message string          `json:"message"`
-					Data    json.RawMessage `json:"data"`
-				}{
+				Error: &mcp.JSONRPCErrorDetails{
 					Code:    mcp.INTERNAL_ERROR,
 					Message: err.Error(),
 				},
