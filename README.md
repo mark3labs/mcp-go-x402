@@ -12,8 +12,7 @@ This library provides:
 - 🔌 **Drop-in replacement**: Fully compatible with mcp-go transport interface
 - 💰 **Automatic payments**: Handles 402 responses transparently
 - 🔐 **Multiple signers**: Support for private keys, mnemonics, keystores
-- 📊 **Budget management**: Configurable spending limits and rate limiting
-- 🎯 **Smart payment**: Automatic for small amounts, callbacks for large
+- 🎯 **Payment control**: Optional callback for payment approval
 - 🧪 **Testing support**: Mock signers and payment recorders for easy testing
 
 ### Server Features
@@ -57,10 +56,8 @@ func main() {
     
     // Create x402 transport
     transport, err := x402.New(x402.Config{
-        ServerURL:        "https://paid-mcp-server.example.com",
-        Signer:           signer,
-        MaxPaymentAmount: "100000",  // 0.1 USDC max per request
-        AutoPayThreshold: "10000",   // Auto-pay up to 0.01 USDC
+        ServerURL: "https://paid-mcp-server.example.com",
+        Signer:    signer,
     })
     if err != nil {
         log.Fatal(err)
@@ -173,29 +170,8 @@ signer, err := x402.NewPrivateKeySigner(
 )
 
 config := x402.Config{
-    ServerURL:        "https://server.example.com",
-    Signer:           signer,
-    MaxPaymentAmount: "1000000",  // Maximum 1 USDC per request
-    AutoPayThreshold: "100000",   // Auto-pay up to 0.1 USDC
-}
-```
-
-### With Rate Limiting
-
-```go
-signer, err := x402.NewPrivateKeySigner(
-    privateKey,
-    x402.AcceptUSDCBase(),
-)
-
-config := x402.Config{
-    ServerURL:        "https://server.example.com",
-    Signer:           signer,
-    MaxPaymentAmount: "1000000",
-    RateLimits: &x402.RateLimits{
-        MaxPaymentsPerMinute: 60,
-        MaxAmountPerHour:     "10000000", // 10 USDC per hour
-    },
+    ServerURL: "https://server.example.com",
+    Signer:    signer,
 }
 ```
 
@@ -203,14 +179,16 @@ config := x402.Config{
 
 ```go
 config := x402.Config{
-    ServerURL:        "https://server.example.com",
-    Signer:           signer,
-    MaxPaymentAmount: "1000000",
-    AutoPayThreshold: "10000",
+    ServerURL: "https://server.example.com",
+    Signer:    signer,
     PaymentCallback: func(amount *big.Int, resource string) bool {
         // Custom logic to approve/decline payments
-        fmt.Printf("Approve payment of %s for %s? ", amount, resource)
-        return getUserApproval()
+        // Return true to approve, false to decline
+        if amount.Cmp(big.NewInt(100000)) > 0 { // More than 0.1 USDC
+            fmt.Printf("Approve payment of %s for %s? ", amount, resource)
+            return getUserApproval()
+        }
+        return true // Auto-approve small amounts
     },
 }
 ```
@@ -219,9 +197,8 @@ config := x402.Config{
 
 ```go
 config := x402.Config{
-    ServerURL:        "https://server.example.com",
-    Signer:           signer,
-    MaxPaymentAmount: "1000000",
+    ServerURL: "https://server.example.com",
+    Signer:    signer,
     OnPaymentAttempt: func(event x402.PaymentEvent) {
         log.Printf("Attempting payment: %s to %s", event.Amount, event.Recipient)
     },
@@ -415,9 +392,8 @@ func TestMyMCPClient(t *testing.T) {
     )
     
     transport, _ := x402.New(x402.Config{
-        ServerURL:        "https://test-server.example.com",
-        Signer:           signer,
-        MaxPaymentAmount: "1000000",
+        ServerURL: "https://test-server.example.com",
+        Signer:    signer,
     })
     
     // Test your MCP client
@@ -438,10 +414,8 @@ func TestPaymentFlow(t *testing.T) {
     recorder := x402.NewPaymentRecorder()
     
     transport, _ := x402.New(x402.Config{
-        ServerURL:        testServer.URL,
-        Signer:           signer,
-        MaxPaymentAmount: "10000",
-        AutoPayThreshold: "5000",
+        ServerURL: testServer.URL,
+        Signer:    signer,
     })
     
     // Attach the recorder using the helper function
@@ -469,9 +443,9 @@ Additional networks can be supported by manually configuring `ClientPaymentOptio
 ## Security Considerations
 
 - **Private keys**: Never hardcode private keys. Use environment variables or secure key management.
-- **Spending limits**: Always set reasonable `MaxPaymentAmount` and `RateLimits`.
-- **Payment approval**: Use `PaymentCallback` for amounts above your comfort threshold.
+- **Payment approval**: Use `PaymentCallback` to control payment approval based on amount or resource.
 - **Network verification**: The library verifies network and asset compatibility before signing.
+- **Per-option limits**: Use `.WithMaxAmount()` on payment options to set per-network spending limits.
 
 ## Examples
 
