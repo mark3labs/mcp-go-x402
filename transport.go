@@ -22,9 +22,6 @@ import (
 )
 
 const (
-	// HTTP headers
-	headerPayment = "X-PAYMENT"
-
 	// Timeouts
 	defaultHTTPTimeout     = 2 * time.Minute
 	sessionCloseTimeout    = 5 * time.Second
