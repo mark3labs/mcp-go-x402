@@ -10,10 +10,8 @@ import (
 
 // X402Server wraps an MCP server with x402 payment support
 type X402Server struct {
-	mcpServer   *server.MCPServer
-	httpServer  *server.StreamableHTTPServer
-	x402Handler *X402Handler
-	config      *Config
+	mcpServer *server.MCPServer
+	config    *Config
 }
 
 // Option configures an X402Server
@@ -22,26 +20,25 @@ type Option func(*X402Server)
 // WithFacilitator sets a custom facilitator
 func WithFacilitator(f Facilitator) Option {
 	return func(s *X402Server) {
-		s.x402Handler.facilitator = f
+		// Note: With middleware approach, facilitator is set during server creation
+		// This option is kept for API compatibility but has no effect
 	}
 }
 
 // NewX402Server creates a new x402-enabled MCP server
 func NewX402Server(name, version string, config *Config, opts ...Option) *X402Server {
-	// Create base MCP server
-	mcpServer := server.NewMCPServer(name, version)
+	// Create facilitator
+	facilitator := NewHTTPFacilitator(config.FacilitatorURL)
+	facilitator.SetVerbose(config.Verbose)
 
-	// Create HTTP server
-	httpServer := server.NewStreamableHTTPServer(mcpServer)
-
-	// Create x402 handler wrapper
-	x402Handler := NewX402Handler(httpServer, config)
+	// Create base MCP server with payment middleware
+	mcpServer := server.NewMCPServer(name, version,
+		server.WithToolHandlerMiddleware(newPaymentMiddleware(config, facilitator)),
+	)
 
 	srv := &X402Server{
-		mcpServer:   mcpServer,
-		httpServer:  httpServer,
-		x402Handler: x402Handler,
-		config:      config,
+		mcpServer: mcpServer,
+		config:    config,
 	}
 
 	// Apply options
@@ -80,7 +77,10 @@ func (s *X402Server) AddPayableTool(
 
 // Handler returns the http.Handler for the x402 server
 func (s *X402Server) Handler() http.Handler {
-	return s.x402Handler
+	// Use the standard MCP HTTP server directly
+	// No need for HTTP middleware wrapper anymore
+	httpServer := server.NewStreamableHTTPServer(s.mcpServer)
+	return httpServer
 }
 
 // Start starts the x402 server on the specified address
@@ -88,7 +88,5 @@ func (s *X402Server) Start(addr string) error {
 	fmt.Printf("Starting X402 MCP Server on %s\n", addr)
 	fmt.Printf("MCP endpoint: http://localhost%s\n", addr)
 
-	// The httpServer (StreamableHTTPServer) handles routing internally
-	// and expects to be served at the root. It adds /mcp and other routes itself.
-	return http.ListenAndServe(addr, s.x402Handler)
+	return http.ListenAndServe(addr, s.Handler())
 }

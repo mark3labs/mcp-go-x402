@@ -190,82 +190,166 @@ func (t *X402Transport) SendRequest(ctx context.Context, request transport.JSONR
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
+	defer resp.Body.Close()
 
-	// Handle payment if required
-	if resp.StatusCode == http.StatusPaymentRequired {
-		paymentResp, err := t.handlePaymentRequired(ctx, resp, request.Method, requestBody)
+	// Process the response to get JSON-RPC response
+	jsonrpcResp, err := t.processResponse(ctx, resp, request)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for JSON-RPC 402 error (payment required)
+	if jsonrpcResp.Error != nil && jsonrpcResp.Error.Code == 402 {
+		paymentResp, err := t.handlePaymentRequiredJSONRPC(ctx, jsonrpcResp.Error, request)
 		if err != nil {
 			return nil, err
 		}
-		resp = paymentResp
+		return paymentResp, nil
 	}
 
-	defer resp.Body.Close()
-
-	// Process the response
-	return t.processResponse(ctx, resp, request)
+	return jsonrpcResp, nil
 }
 
-// handlePaymentRequired handles 402 Payment Required responses
-func (t *X402Transport) handlePaymentRequired(ctx context.Context, resp *http.Response, method string, requestBody []byte) (*http.Response, error) {
-	// Parse payment requirements
-	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+// handlePaymentRequiredJSONRPC handles JSON-RPC 402 errors by creating payment and retrying
+func (t *X402Transport) handlePaymentRequiredJSONRPC(ctx context.Context, rpcError *mcp.JSONRPCErrorDetails, originalRequest transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
+	// Parse payment requirements from error.data
+	requirementsData, err := json.Marshal(rpcError.Data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read 402 response: %w", err)
+		return nil, fmt.Errorf("failed to marshal payment requirements: %w", err)
 	}
 
 	var requirements PaymentRequirementsResponse
-	if err := json.Unmarshal(body, &requirements); err != nil {
+	if err := json.Unmarshal(requirementsData, &requirements); err != nil {
 		return nil, fmt.Errorf("failed to parse payment requirements: %w", err)
 	}
 
 	// Record payment attempt
-	t.recordPaymentEvent(PaymentEventAttempt, method, requirements)
+	t.recordPaymentEvent(PaymentEventAttempt, originalRequest.Method, requirements)
 
 	// Create and sign payment
 	payment, err := t.handler.CreatePayment(ctx, requirements)
 	if err != nil {
-		t.recordPaymentError(PaymentEventFailure, method, requirements, err)
+		t.recordPaymentError(PaymentEventFailure, originalRequest.Method, requirements, err)
 		return nil, fmt.Errorf("failed to create payment: %w", err)
 	}
 
-	// Retry request with payment
-	headers := map[string]string{
-		headerPayment: payment.Encode(),
+	// Inject payment into request params._meta
+	modifiedRequest, err := t.injectPaymentIntoRequest(originalRequest, payment)
+	if err != nil {
+		t.recordPaymentError(PaymentEventFailure, originalRequest.Method, requirements, err)
+		return nil, fmt.Errorf("failed to inject payment: %w", err)
 	}
 
-	resp2, err := t.sendHTTPWithHeaders(ctx, http.MethodPost, bytes.NewReader(requestBody), "application/json, text/event-stream", headers)
+	// Retry request with payment
+	requestBody, err := json.Marshal(modifiedRequest)
 	if err != nil {
-		t.recordPaymentError(PaymentEventFailure, method, requirements, err)
+		return nil, fmt.Errorf("failed to marshal request with payment: %w", err)
+	}
+
+	resp, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(requestBody), "application/json, text/event-stream")
+	if err != nil {
+		t.recordPaymentError(PaymentEventFailure, originalRequest.Method, requirements, err)
 		return nil, fmt.Errorf("failed to send payment request: %w", err)
 	}
+	defer resp.Body.Close()
 
-	// Check payment status based on response
-	switch resp2.StatusCode {
-	case http.StatusOK, http.StatusAccepted:
-		t.recordPaymentEvent(PaymentEventSuccess, method, requirements)
-	case http.StatusPaymentRequired:
-		t.recordPaymentError(PaymentEventFailure, method, requirements, fmt.Errorf("payment rejected: server returned 402 after payment"))
-		// Ensure body is closed even on error
-		defer resp2.Body.Close()
-		// Read and check the new 402 response
-		body, readErr := io.ReadAll(resp2.Body)
-		if readErr == nil {
-			var paymentReqs PaymentRequirementsResponse
-			if err := json.Unmarshal(body, &paymentReqs); err == nil && paymentReqs.X402Version > 0 {
-				return nil, fmt.Errorf("payment rejected by server (check clock synchronization)")
-			}
-		}
-		if readErr != nil {
-			return nil, fmt.Errorf("payment required (402): failed to read response: %w", readErr)
-		}
-		return nil, fmt.Errorf("payment required (402): %s", body)
-	default:
-		t.recordPaymentError(PaymentEventFailure, method, requirements, fmt.Errorf("unexpected status after payment: %d", resp2.StatusCode))
+	// Process response
+	jsonrpcResp, err := t.processResponse(ctx, resp, modifiedRequest)
+	if err != nil {
+		t.recordPaymentError(PaymentEventFailure, originalRequest.Method, requirements, err)
+		return nil, err
 	}
 
-	return resp2, nil
+	// Check if payment was accepted
+	if jsonrpcResp.Error != nil && jsonrpcResp.Error.Code == 402 {
+		t.recordPaymentError(PaymentEventFailure, originalRequest.Method, requirements,
+			fmt.Errorf("payment rejected: server returned 402 after payment"))
+		return nil, fmt.Errorf("payment rejected by server")
+	}
+
+	// Extract settlement response from result._meta
+	if jsonrpcResp.Error == nil {
+		t.extractAndRecordSettlement(jsonrpcResp, originalRequest.Method, requirements)
+	}
+
+	return jsonrpcResp, nil
+}
+
+// injectPaymentIntoRequest adds payment data to request params._meta
+func (t *X402Transport) injectPaymentIntoRequest(request transport.JSONRPCRequest, payment *PaymentPayload) (transport.JSONRPCRequest, error) {
+	// We need to add _meta["x402/payment"] to the params
+	// The params could be any type, so we need to handle it carefully
+
+	// Marshal params to JSON
+	paramsBytes, err := json.Marshal(request.Params)
+	if err != nil {
+		return request, fmt.Errorf("failed to marshal params: %w", err)
+	}
+
+	// Unmarshal into map
+	var paramsMap map[string]any
+	if err := json.Unmarshal(paramsBytes, &paramsMap); err != nil {
+		return request, fmt.Errorf("failed to unmarshal params: %w", err)
+	}
+
+	// Get or create _meta field
+	var meta map[string]any
+	if metaField, exists := paramsMap["_meta"]; exists {
+		meta, _ = metaField.(map[string]any)
+	}
+	if meta == nil {
+		meta = make(map[string]any)
+	}
+
+	// Add payment to _meta
+	meta["x402/payment"] = payment
+	paramsMap["_meta"] = meta
+
+	// Update request
+	request.Params = paramsMap
+	return request, nil
+}
+
+// extractAndRecordSettlement extracts settlement response from result._meta and records success
+func (t *X402Transport) extractAndRecordSettlement(response *transport.JSONRPCResponse, method string, reqs PaymentRequirementsResponse) {
+	// Parse result to extract _meta
+	var resultMap map[string]any
+	if err := json.Unmarshal(response.Result, &resultMap); err != nil {
+		return
+	}
+
+	// Extract _meta field
+	metaField, exists := resultMap["_meta"]
+	if !exists {
+		return
+	}
+
+	meta, ok := metaField.(map[string]any)
+	if !ok {
+		return
+	}
+
+	// Extract x402/payment-response
+	paymentRespField, exists := meta["x402/payment-response"]
+	if !exists {
+		return
+	}
+
+	// Parse settlement response
+	paymentRespBytes, err := json.Marshal(paymentRespField)
+	if err != nil {
+		return
+	}
+
+	var settlementResp SettlementResponse
+	if err := json.Unmarshal(paymentRespBytes, &settlementResp); err != nil {
+		return
+	}
+
+	// Record success if settlement was successful
+	if settlementResp.Success {
+		t.recordPaymentEvent(PaymentEventSuccess, method, reqs)
+	}
 }
 
 // processResponse processes the HTTP response and returns a JSON-RPC response
@@ -549,17 +633,7 @@ func (t *X402Transport) SendNotification(ctx context.Context, notification mcp.J
 	}
 	defer resp.Body.Close()
 
-	// Handle 402 for notifications (unusual but possible)
-	if resp.StatusCode == http.StatusPaymentRequired {
-		// Use the common payment handling logic
-		paymentResp, err := t.handlePaymentRequired(ctx, resp, notification.Method, notificationBody)
-		if err != nil {
-			return err
-		}
-		defer paymentResp.Body.Close()
-		resp = paymentResp
-	}
-
+	// For notifications, we don't expect a result, but we should check for errors
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
