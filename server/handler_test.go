@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -84,22 +83,38 @@ func TestX402Handler_PaymentRequired(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusPaymentRequired {
-		t.Errorf("Expected 402, got %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", rr.Code)
 	}
 
-	// Check response
-	var resp PaymentRequirements402Response
-	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+	// Check JSON-RPC response
+	var jsonrpcResp struct {
+		JSONRPC string `json:"jsonrpc"`
+		ID      int    `json:"id"`
+		Error   *struct {
+			Code    int                            `json:"code"`
+			Message string                         `json:"message"`
+			Data    PaymentRequirements402Response `json:"data"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&jsonrpcResp); err != nil {
 		t.Fatal(err)
 	}
 
-	if len(resp.Accepts) != 1 {
+	if jsonrpcResp.Error == nil {
+		t.Fatal("Expected error in response")
+	}
+
+	if jsonrpcResp.Error.Code != 402 {
+		t.Errorf("Expected error code 402, got %d", jsonrpcResp.Error.Code)
+	}
+
+	if len(jsonrpcResp.Error.Data.Accepts) != 1 {
 		t.Error("Expected payment requirements")
 	}
 
-	if resp.Accepts[0].MaxAmountRequired != "1000" {
-		t.Errorf("Wrong amount: %s", resp.Accepts[0].MaxAmountRequired)
+	if jsonrpcResp.Error.Data.Accepts[0].MaxAmountRequired != "1000" {
+		t.Errorf("Wrong amount: %s", jsonrpcResp.Error.Data.Accepts[0].MaxAmountRequired)
 	}
 
 	if !mockHandler.called {
@@ -157,14 +172,21 @@ func TestX402Handler_WithValidPayment(t *testing.T) {
 	payment.Payload.Authorization.To = "0xusdc" // Asset address in EIP-3009
 	payment.Payload.Authorization.Value = "1000"
 
-	paymentJSON, _ := json.Marshal(payment)
-	paymentHeader := base64.StdEncoding.EncodeToString(paymentJSON)
-
-	// Request with payment
-	reqBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"paid-tool"},"id":1}`
-	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader([]byte(reqBody)))
+	// Request with payment in _meta
+	reqJSON := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "paid-tool",
+			"_meta": map[string]any{
+				"x402/payment": payment,
+			},
+		},
+		"id": 1,
+	}
+	reqBody, _ := json.Marshal(reqJSON)
+	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-PAYMENT", paymentHeader)
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -178,10 +200,28 @@ func TestX402Handler_WithValidPayment(t *testing.T) {
 		t.Error("MCP handler should have been called with valid payment")
 	}
 
-	// Check for payment response header
-	if rr.Header().Get("X-PAYMENT-RESPONSE") == "" {
-		t.Error("Expected X-PAYMENT-RESPONSE header")
+	// Check for settlement response in result._meta
+	var jsonrpcResp struct {
+		JSONRPC string `json:"jsonrpc"`
+		ID      int    `json:"id"`
+		Result  struct {
+			Content []any          `json:"content"`
+			Meta    map[string]any `json:"_meta"`
+		} `json:"result"`
 	}
+	if err := json.NewDecoder(rr.Body).Decode(&jsonrpcResp); err != nil {
+		t.Fatal(err)
+	}
+
+	if jsonrpcResp.Result.Meta == nil {
+		t.Fatal("Expected _meta in result")
+	}
+
+	settlementResp, ok := jsonrpcResp.Result.Meta["x402/payment-response"]
+	if !ok {
+		t.Error("Expected x402/payment-response in _meta")
+	}
+	_ = settlementResp // Validate structure if needed
 }
 
 // MockFacilitator for testing
@@ -253,15 +293,33 @@ func TestX402Handler_MultiplePaymentOptions(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusPaymentRequired {
-		t.Errorf("Expected 402, got %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", rr.Code)
 	}
 
-	// Check response contains all payment options
-	var resp PaymentRequirements402Response
-	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+	// Check JSON-RPC response has 402 error with all 3 payment options
+	var jsonrpcResp struct {
+		JSONRPC string `json:"jsonrpc"`
+		ID      int    `json:"id"`
+		Error   *struct {
+			Code    int                            `json:"code"`
+			Message string                         `json:"message"`
+			Data    PaymentRequirements402Response `json:"data"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&jsonrpcResp); err != nil {
 		t.Fatal(err)
 	}
+
+	if jsonrpcResp.Error == nil {
+		t.Fatal("Expected error in response")
+	}
+
+	if jsonrpcResp.Error.Code != 402 {
+		t.Errorf("Expected error code 402, got %d", jsonrpcResp.Error.Code)
+	}
+
+	resp := jsonrpcResp.Error.Data
 
 	if len(resp.Accepts) != 3 {
 		t.Errorf("Expected 3 payment options, got %d", len(resp.Accepts))
@@ -336,14 +394,21 @@ func TestX402Handler_PaymentMatching(t *testing.T) {
 	payment.Payload.Authorization.To = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" // Base USDC
 	payment.Payload.Authorization.Value = "500000"
 
-	paymentJSON, _ := json.Marshal(payment)
-	paymentHeader := base64.StdEncoding.EncodeToString(paymentJSON)
-
-	// Request with payment
-	reqBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"multi-pay-tool"},"id":1}`
-	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader([]byte(reqBody)))
+	// Request with payment in _meta
+	reqJSON := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "multi-pay-tool",
+			"_meta": map[string]any{
+				"x402/payment": payment,
+			},
+		},
+		"id": 1,
+	}
+	reqBody, _ := json.Marshal(reqJSON)
+	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-PAYMENT", paymentHeader)
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)

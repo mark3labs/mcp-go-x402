@@ -17,6 +17,10 @@ func (e *paymentError) Error() string {
 	return e.details.Message
 }
 
+func (e *paymentError) JSONRPCErrorDetails() *mcp.JSONRPCErrorDetails {
+	return e.details
+}
+
 func newPaymentError(code int, message string, data any) error {
 	return &paymentError{
 		details: &mcp.JSONRPCErrorDetails{
@@ -26,6 +30,14 @@ func newPaymentError(code int, message string, data any) error {
 		},
 	}
 }
+
+type hasJSONRPCErrorDetails interface {
+	JSONRPCErrorDetails() *mcp.JSONRPCErrorDetails
+}
+
+type contextKey string
+
+const paymentErrorKey contextKey = "x402_payment_error"
 
 func newPaymentMiddleware(config *Config, facilitator Facilitator) server.ToolHandlerMiddleware {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
@@ -55,6 +67,7 @@ func newPaymentMiddleware(config *Config, facilitator Facilitator) server.ToolHa
 				if config.Verbose {
 					fmt.Printf("[X402] No payment found in _meta, returning 402 error\n")
 				}
+				// Store error details in error so interceptor can extract them
 				return nil, newPaymentError(402, "Payment required", PaymentRequirements402Response{
 					X402Version: 1,
 					Error:       "Payment required to access this resource",

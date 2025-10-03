@@ -27,14 +27,8 @@ func WithFacilitator(f Facilitator) Option {
 
 // NewX402Server creates a new x402-enabled MCP server
 func NewX402Server(name, version string, config *Config, opts ...Option) *X402Server {
-	// Create facilitator
-	facilitator := NewHTTPFacilitator(config.FacilitatorURL)
-	facilitator.SetVerbose(config.Verbose)
-
-	// Create base MCP server with payment middleware
-	mcpServer := server.NewMCPServer(name, version,
-		server.WithToolHandlerMiddleware(newPaymentMiddleware(config, facilitator)),
-	)
+	// Create base MCP server
+	mcpServer := server.NewMCPServer(name, version)
 
 	srv := &X402Server{
 		mcpServer: mcpServer,
@@ -77,10 +71,9 @@ func (s *X402Server) AddPayableTool(
 
 // Handler returns the http.Handler for the x402 server
 func (s *X402Server) Handler() http.Handler {
-	// Use the standard MCP HTTP server directly
-	// No need for HTTP middleware wrapper anymore
+	// Wrap MCP HTTP server with x402 payment handler
 	httpServer := server.NewStreamableHTTPServer(s.mcpServer)
-	return httpServer
+	return NewX402Handler(httpServer, s.config)
 }
 
 // Start starts the x402 server on the specified address
