@@ -1,0 +1,12 @@
+This file documents the test changes needed.
+
+All test servers need to:
+1. Read request body and parse JSON
+2. Check for payment in params._meta["x402/payment"]
+3. Return JSON-RPC error with code 402 (not HTTP 402)
+4. Return success response with settlement in result._meta["x402/payment-response"]
+
+Tests that need updating:
+- TestX402Transport_PaymentCallback (lines 281-344)
+- TestX402Transport_MultipleRequests (lines 346-438)
+- TestX402Transport_PaymentCallbackRejection (lines 663-705)

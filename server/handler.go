@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,13 +40,12 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Parse to check if it's a tool call
-	// Based on mcp.CallToolRequest and JSONRPC structure
 	var mcpReq struct {
 		JSONRPC string `json:"jsonrpc"`
 		Method  string `json:"method"`
 		Params  struct {
-			Name      string `json:"name"`      // Tool name from CallToolParams
-			Arguments any    `json:"arguments"` // Tool arguments
+			Name      string `json:"name"`
+			Arguments any    `json:"arguments"`
 		} `json:"params"`
 		ID any `json:"id"`
 	}
@@ -73,24 +71,23 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Make a copy of the requirement and ensure all required fields are set
 	reqCopy := *requirement
-	reqCopy.Resource = fmt.Sprintf("mcp://tools/%s", mcpReq.Params.Name)
+	reqCopy.Resource = fmt.Sprintf("mcp://tool/%s", mcpReq.Params.Name)
 	if reqCopy.MimeType == "" {
 		reqCopy.MimeType = "application/json"
 	}
 	requirement = &reqCopy
 
-	// Check for payment header
-	paymentHeader := r.Header.Get("X-PAYMENT")
-	if paymentHeader == "" {
-		h.send402Response(w, requirement, mcpReq.Params.Name)
+	// Extract payment from _meta field
+	payment, err := extractPaymentFromMeta(body)
+	if err != nil {
+		fmt.Printf("Failed to extract payment from _meta: %v\n", err)
+		h.sendJSONRPCError(w, mcpReq.ID, -32602, "Invalid payment in _meta field")
 		return
 	}
 
-	// Decode and verify payment
-	payment, err := h.decodePaymentHeader(paymentHeader)
-	if err != nil {
-		fmt.Printf("Failed to decode payment header: %v\n", err)
-		http.Error(w, "Invalid payment header", http.StatusBadRequest)
+	if payment == nil {
+		// No payment provided - send 402 error
+		h.send402JSONRPCError(w, requirement, mcpReq.Params.Name, mcpReq.ID)
 		return
 	}
 
@@ -98,7 +95,7 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	verifyResp, err := h.facilitator.Verify(ctx, payment, requirement)
 	if err != nil {
-		http.Error(w, "Payment verification failed", http.StatusBadRequest)
+		h.sendJSONRPCError(w, mcpReq.ID, -32603, fmt.Sprintf("Payment verification failed: %v", err))
 		return
 	}
 	if !verifyResp.IsValid {
@@ -106,7 +103,7 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if verifyResp.InvalidReason != "" {
 			errorMsg = verifyResp.InvalidReason
 		}
-		http.Error(w, errorMsg, http.StatusBadRequest)
+		h.sendJSONRPCError(w, mcpReq.ID, -32602, errorMsg)
 		return
 	}
 
@@ -115,11 +112,19 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !h.config.VerifyOnly {
 		settleResp, err = h.facilitator.Settle(ctx, payment, requirement)
 		if err != nil || !settleResp.Success {
-			errorMsg := "Payment settlement failed"
-			if settleResp != nil && settleResp.ErrorReason != "" {
-				errorMsg = settleResp.ErrorReason
+			// Convert to SettlementResponse for error response
+			settlement := &SettlementResponse{
+				Success:     false,
+				Transaction: "",
+				Network:     h.config.DefaultNetwork,
+				Payer:       verifyResp.Payer,
 			}
-			http.Error(w, errorMsg, http.StatusBadRequest)
+			if settleResp != nil {
+				settlement.ErrorReason = settleResp.ErrorReason
+				settlement.Transaction = settleResp.Transaction
+			}
+			// Send 402 error with payment-response in error.data
+			h.send402ErrorWithSettlement(w, requirement, mcpReq.Params.Name, mcpReq.ID, settlement)
 			return
 		}
 	} else {
@@ -132,50 +137,94 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Forward request to MCP handler with payment confirmation
-	h.forwardWithPaymentResponse(w, r, settleResp.Transaction, verifyResp.Payer)
-}
-
-func (h *X402Handler) send402Response(w http.ResponseWriter, requirement *PaymentRequirement, toolName string) {
-	// Make a copy of the requirement and set the resource URL
-	reqCopy := *requirement
-	reqCopy.Resource = fmt.Sprintf("mcp://tools/%s", toolName)
-
-	// Ensure required fields are set
-	if reqCopy.MimeType == "" {
-		reqCopy.MimeType = "application/json"
+	// Convert SettleResponse to SettlementResponse for forwarding
+	settlement := &SettlementResponse{
+		Success:     settleResp.Success,
+		Transaction: settleResp.Transaction,
+		Network:     settleResp.Network,
+		Payer:       settleResp.Payer,
 	}
 
-	response := PaymentRequirements402Response{
-		X402Version: 1,
-		Error:       "X-PAYMENT header is required",
-		Accepts:     []PaymentRequirement{reqCopy},
+	// Forward request to MCP handler and inject settlement into response
+	h.forwardWithPaymentResponse(w, r, settlement)
+}
+
+// send402JSONRPCError sends a JSON-RPC error response with code 402
+func (h *X402Handler) send402JSONRPCError(w http.ResponseWriter, requirement *PaymentRequirement, toolName string, requestID any) {
+	responseBytes, err := createJSONRPC402Error(requestID, requirement, toolName)
+	if err != nil {
+		http.Error(w, "Failed to create error response", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusPaymentRequired)
+	w.WriteHeader(http.StatusOK) // JSON-RPC errors use HTTP 200
+	_, _ = w.Write(responseBytes)
+}
+
+// sendJSONRPCError sends a generic JSON-RPC error response
+func (h *X402Handler) sendJSONRPCError(w http.ResponseWriter, requestID any, code int, message string) {
+	response := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"error": map[string]any{
+			"code":    code,
+			"message": message,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func (h *X402Handler) decodePaymentHeader(header string) (*PaymentPayload, error) {
-	decoded, err := base64.StdEncoding.DecodeString(header)
-	if err != nil {
-		return nil, fmt.Errorf("decode base64: %w", err)
+// send402ErrorWithSettlement sends 402 error with settlement info in error.data
+func (h *X402Handler) send402ErrorWithSettlement(w http.ResponseWriter, requirement *PaymentRequirement, toolName string, requestID any, settlement *SettlementResponse) {
+	// Create payment requirements
+	reqCopy := *requirement
+	reqCopy.Resource = fmt.Sprintf("mcp://tool/%s", toolName)
+
+	paymentReqData := PaymentRequirements402Response{
+		X402Version: 1,
+		Error:       "Payment settlement failed",
+		Accepts:     []PaymentRequirement{reqCopy},
 	}
 
-	var payment PaymentPayload
-	if err := json.Unmarshal(decoded, &payment); err != nil {
-		return nil, fmt.Errorf("unmarshal payment: %w", err)
+	// Create error data with both payment requirements and settlement response
+	errorData := map[string]any{
+		"x402Version": paymentReqData.X402Version,
+		"error":       paymentReqData.Error,
+		"accepts":     paymentReqData.Accepts,
 	}
 
-	if payment.X402Version != 1 {
-		return nil, fmt.Errorf("unsupported x402 version: %d", payment.X402Version)
+	if settlement != nil {
+		errorData["x402/payment-response"] = map[string]any{
+			"success":     settlement.Success,
+			"errorReason": settlement.ErrorReason,
+			"transaction": settlement.Transaction,
+			"network":     settlement.Network,
+			"payer":       settlement.Payer,
+		}
 	}
 
-	return &payment, nil
+	errorDataBytes, _ := json.Marshal(errorData)
+
+	response := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"error": map[string]any{
+			"code":    402,
+			"message": "Payment settlement failed",
+			"data":    json.RawMessage(errorDataBytes),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
-func (h *X402Handler) forwardWithPaymentResponse(w http.ResponseWriter, r *http.Request, transaction string, payer string) {
+func (h *X402Handler) forwardWithPaymentResponse(w http.ResponseWriter, r *http.Request, settlement *SettlementResponse) {
 	// Create a custom ResponseWriter to capture the response
 	captureWriter := &responseCapture{
 		ResponseWriter: w,
@@ -186,26 +235,37 @@ func (h *X402Handler) forwardWithPaymentResponse(w http.ResponseWriter, r *http.
 	// Forward to MCP handler
 	h.mcpHandler.ServeHTTP(captureWriter, r)
 
-	// Add payment response header if successful
+	// Inject settlement into response _meta if successful
 	if captureWriter.statusCode == 200 {
-		paymentResp := SettlementResponse{
-			Success:     true,
-			Transaction: transaction,
-			Network:     h.config.DefaultNetwork,
-			Payer:       payer,
+		settlementResp := SettlementResponse{
+			Success:     settlement.Success,
+			Transaction: settlement.Transaction,
+			Network:     settlement.Network,
+			Payer:       settlement.Payer,
 		}
 
-		respJSON, _ := json.Marshal(paymentResp)
-		encoded := base64.StdEncoding.EncodeToString(respJSON)
-		w.Header().Set("X-PAYMENT-RESPONSE", encoded)
-	}
+		// Inject into response body
+		modifiedBody, err := injectSettlementIntoResponse(captureWriter.body.Bytes(), settlementResp)
+		if err != nil {
+			// If we can't inject, just return the original response
+			fmt.Printf("Warning: failed to inject settlement into response: %v\n", err)
+			modifiedBody = captureWriter.body.Bytes()
+		}
 
-	// Write captured headers and body
-	for k, v := range captureWriter.headers {
-		w.Header()[k] = v
+		// Write modified response
+		for k, v := range captureWriter.headers {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(captureWriter.statusCode)
+		_, _ = w.Write(modifiedBody)
+	} else {
+		// Non-200 response, forward as-is
+		for k, v := range captureWriter.headers {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(captureWriter.statusCode)
+		_, _ = w.Write(captureWriter.body.Bytes())
 	}
-	w.WriteHeader(captureWriter.statusCode)
-	_, _ = w.Write(captureWriter.body.Bytes())
 }
 
 // responseCapture captures HTTP response for modification

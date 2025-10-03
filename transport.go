@@ -22,9 +22,6 @@ import (
 )
 
 const (
-	// HTTP headers
-	headerPayment = "X-PAYMENT"
-
 	// Timeouts
 	defaultHTTPTimeout     = 2 * time.Minute
 	sessionCloseTimeout    = 5 * time.Second
@@ -197,13 +194,36 @@ func (t *X402Transport) SendRequest(ctx context.Context, request transport.JSONR
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
-	// Handle payment if required
-	if resp.StatusCode == http.StatusPaymentRequired {
-		paymentResp, err := t.handlePaymentRequired(ctx, resp, request.Method, requestBody)
+	// In new MCP spec, payment required is signaled via JSON-RPC error (code 402)
+	// not HTTP 402 status. We need to check the response body.
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
+		// Read body to check for 402 error
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
-		resp = paymentResp
+
+		var jsonrpcResp transport.JSONRPCResponse
+		if err := json.Unmarshal(bodyBytes, &jsonrpcResp); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON-RPC response: %w", err)
+		}
+
+		// Check if this is a 402 error (payment required)
+		if jsonrpcResp.Error != nil && jsonrpcResp.Error.Code == 402 {
+			// Reconstruct response for handlePaymentRequired
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			resp.StatusCode = http.StatusOK // Keep as 200 since it's JSON-RPC
+
+			paymentResp, err := t.handlePaymentRequired(ctx, resp, request.Method, requestBody)
+			if err != nil {
+				return nil, err
+			}
+			resp = paymentResp
+		} else {
+			// Normal response - reconstruct it
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		}
 	}
 
 	defer resp.Body.Close()
@@ -212,66 +232,91 @@ func (t *X402Transport) SendRequest(ctx context.Context, request transport.JSONR
 	return t.processResponse(ctx, resp, request)
 }
 
-// handlePaymentRequired handles 402 Payment Required responses
+// handlePaymentRequired handles 402 Payment Required responses (JSON-RPC error format)
 func (t *X402Transport) handlePaymentRequired(ctx context.Context, resp *http.Response, method string, requestBody []byte) (*http.Response, error) {
-	// Parse payment requirements
+	// Parse payment requirements from JSON-RPC error response
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read 402 response: %w", err)
 	}
 
-	var requirements PaymentRequirementsResponse
-	if err := json.Unmarshal(body, &requirements); err != nil {
-		return nil, fmt.Errorf("failed to parse payment requirements: %w", err)
+	requirements, err := extractPaymentRequirementsFromError(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract payment requirements: %w", err)
 	}
 
 	// Record payment attempt
-	t.recordPaymentEvent(PaymentEventAttempt, method, requirements)
+	t.recordPaymentEvent(PaymentEventAttempt, method, *requirements)
 
 	// Create and sign payment
-	payment, err := t.handler.CreatePayment(ctx, requirements)
+	paymentPayload, err := t.handler.CreatePayment(ctx, *requirements)
 	if err != nil {
-		t.recordPaymentError(PaymentEventFailure, method, requirements, err)
+		t.recordPaymentError(PaymentEventFailure, method, *requirements, err)
 		return nil, fmt.Errorf("failed to create payment: %w", err)
 	}
 
-	// Retry request with payment
-	headers := map[string]string{
-		headerPayment: payment.Encode(),
+	// Inject payment into request's _meta field
+	requestBodyWithPayment, err := injectPaymentIntoMeta(requestBody, paymentPayload)
+	if err != nil {
+		t.recordPaymentError(PaymentEventFailure, method, *requirements, err)
+		return nil, fmt.Errorf("failed to inject payment into request: %w", err)
 	}
 
-	resp2, err := t.sendHTTPWithHeaders(ctx, http.MethodPost, bytes.NewReader(requestBody), "application/json, text/event-stream", headers)
+	// Retry request with payment in _meta
+	resp2, err := t.sendHTTP(ctx, http.MethodPost, bytes.NewReader(requestBodyWithPayment), "application/json, text/event-stream")
 	if err != nil {
-		t.recordPaymentError(PaymentEventFailure, method, requirements, err)
+		t.recordPaymentError(PaymentEventFailure, method, *requirements, err)
 		return nil, fmt.Errorf("failed to send payment request: %w", err)
 	}
 
 	// Check payment status based on response
-	switch resp2.StatusCode {
-	case http.StatusOK, http.StatusAccepted:
-		t.recordPaymentEvent(PaymentEventSuccess, method, requirements)
-	case http.StatusPaymentRequired:
-		t.recordPaymentError(PaymentEventFailure, method, requirements, fmt.Errorf("payment rejected: server returned 402 after payment"))
-		// Ensure body is closed even on error
-		defer resp2.Body.Close()
-		// Read and check the new 402 response
-		body, readErr := io.ReadAll(resp2.Body)
-		if readErr == nil {
-			var paymentReqs PaymentRequirementsResponse
-			if err := json.Unmarshal(body, &paymentReqs); err == nil && paymentReqs.X402Version > 0 {
-				return nil, fmt.Errorf("payment rejected by server (check clock synchronization)")
+	// In new spec, payment failures return JSON-RPC errors, not HTTP 402
+	if resp2.StatusCode == http.StatusOK || resp2.StatusCode == http.StatusAccepted {
+		// Read response body to check for settlement info in _meta
+		bodyBytes, err := io.ReadAll(resp2.Body)
+		resp2.Body.Close()
+		if err != nil {
+			t.recordPaymentError(PaymentEventFailure, method, *requirements, err)
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+
+		// Parse as JSON-RPC response
+		var jsonrpcResp transport.JSONRPCResponse
+		if err := json.Unmarshal(bodyBytes, &jsonrpcResp); err != nil {
+			t.recordPaymentError(PaymentEventFailure, method, *requirements, err)
+			return nil, fmt.Errorf("failed to parse JSON-RPC response: %w", err)
+		}
+
+		// Check if it's an error response (payment failed)
+		if jsonrpcResp.Error != nil && jsonrpcResp.Error.Code == 402 {
+			// Payment was rejected - check for payment-response in error.data
+			var errorData struct {
+				PaymentResponse *SettlementResponse `json:"x402/payment-response,omitempty"`
 			}
+			if jsonrpcResp.Error.Data != nil {
+				json.Unmarshal(jsonrpcResp.Error.Data, &errorData)
+			}
+
+			errMsg := "payment rejected by server"
+			if errorData.PaymentResponse != nil && errorData.PaymentResponse.ErrorReason != "" {
+				errMsg = errorData.PaymentResponse.ErrorReason
+			}
+			t.recordPaymentError(PaymentEventFailure, method, *requirements, fmt.Errorf(errMsg))
+			return nil, fmt.Errorf("payment failed: %s", errMsg)
 		}
-		if readErr != nil {
-			return nil, fmt.Errorf("payment required (402): failed to read response: %w", readErr)
-		}
-		return nil, fmt.Errorf("payment required (402): %s", body)
-	default:
-		t.recordPaymentError(PaymentEventFailure, method, requirements, fmt.Errorf("unexpected status after payment: %d", resp2.StatusCode))
+
+		// Success - record it
+		t.recordPaymentEvent(PaymentEventSuccess, method, *requirements)
+
+		// Reconstruct response with body
+		resp2.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return resp2, nil
 	}
 
-	return resp2, nil
+	// Unexpected status code
+	t.recordPaymentError(PaymentEventFailure, method, *requirements, fmt.Errorf("unexpected status after payment: %d", resp2.StatusCode))
+	return nil, fmt.Errorf("unexpected status code: %d", resp2.StatusCode)
 }
 
 // processResponse processes the HTTP response and returns a JSON-RPC response
@@ -349,11 +394,6 @@ func (t *X402Transport) processResponse(ctx context.Context, resp *http.Response
 
 // sendHTTP sends an HTTP request with standard headers (similar to StreamableHTTP)
 func (t *X402Transport) sendHTTP(ctx context.Context, method string, body io.Reader, acceptType string) (*http.Response, error) {
-	return t.sendHTTPWithHeaders(ctx, method, body, acceptType, nil)
-}
-
-// sendHTTPWithHeaders sends an HTTP request with custom headers (for x402 payments)
-func (t *X402Transport) sendHTTPWithHeaders(ctx context.Context, method string, body io.Reader, acceptType string, extraHeaders map[string]string) (*http.Response, error) {
 	// Check for context cancellation before making expensive operations
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context cancelled before request: %w", err)
@@ -380,11 +420,6 @@ func (t *X402Transport) sendHTTPWithHeaders(ctx context.Context, method string, 
 		if version, ok := versionVal.(string); ok && version != "" {
 			req.Header.Set(transport.HeaderKeyProtocolVersion, version)
 		}
-	}
-
-	// Add extra headers
-	for k, v := range extraHeaders {
-		req.Header.Set(k, v)
 	}
 
 	// Send request
