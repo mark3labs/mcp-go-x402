@@ -280,38 +280,39 @@ func TestX402Transport_RateLimit(t *testing.T) {
 
 func TestX402Transport_PaymentCallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-PAYMENT") == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusPaymentRequired)
-			_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
-				X402Version: 1,
-				Error:       "Payment required",
-				Accepts: []PaymentRequirement{
-					{
-						Scheme:            "exact",
-						Network:           "base-sepolia",
-						MaxAmountRequired: "10000", // Above auto-pay threshold
-						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-						PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
-						Resource:          r.URL.String(),
-						Description:       "Test",
-						MaxTimeoutSeconds: 60,
-						Extra: map[string]string{
-							"name":    "USDC",
-							"version": "2",
-						},
-					},
+		bodyBytes, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(bodyBytes, &req)
+
+		params, _ := req["params"].(map[string]any)
+		meta, hasMeta := params["_meta"].(map[string]any)
+		_, hasPayment := meta["x402/payment"]
+
+		if !hasMeta || !hasPayment {
+			requirement := PaymentRequirement{
+				Scheme:            "exact",
+				Network:           "base-sepolia",
+				MaxAmountRequired: "10000", // Above auto-pay threshold
+				Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+				PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+				Resource:          "test://resource",
+				Description:       "Test",
+				MaxTimeoutSeconds: 60,
+				Extra: map[string]string{
+					"name":    "USDC",
+					"version": "2",
 				},
-			})
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(create402JSONRPCResponse(req["id"], requirement))
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(transport.JSONRPCResponse{
-			ID:     mcp.NewRequestId(1),
-			Result: json.RawMessage(`{"data":"test"}`),
-		})
+		_ = json.NewEncoder(w).Encode(createSuccessResponse(req["id"], "test", "0xTestWallet"))
 	}))
 	defer server.Close()
 
@@ -348,43 +349,40 @@ func TestX402Transport_MultipleRequests(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqNum := requestCount.Add(1)
 
+		bodyBytes, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(bodyBytes, &req)
+
+		params, _ := req["params"].(map[string]any)
+		meta, hasMeta := params["_meta"].(map[string]any)
+		_, hasPayment := meta["x402/payment"]
+
 		// Only first request requires payment
-		if reqNum == 1 && r.Header.Get("X-PAYMENT") == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusPaymentRequired)
-			_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
-				X402Version: 1,
-				Error:       "Payment required",
-				Accepts: []PaymentRequirement{
-					{
-						Scheme:            "exact",
-						Network:           "base-sepolia",
-						MaxAmountRequired: "1000",
-						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-						PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
-						Resource:          r.URL.String(),
-						Description:       "Test",
-						MaxTimeoutSeconds: 60,
-						Extra: map[string]string{
-							"name":    "USDC",
-							"version": "2",
-						},
-					},
+		if reqNum == 1 && (!hasMeta || !hasPayment) {
+			requirement := PaymentRequirement{
+				Scheme:            "exact",
+				Network:           "base-sepolia",
+				MaxAmountRequired: "1000",
+				Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+				PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+				Resource:          "test://resource",
+				Description:       "Test",
+				MaxTimeoutSeconds: 60,
+				Extra: map[string]string{
+					"name":    "USDC",
+					"version": "2",
 				},
-			})
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(create402JSONRPCResponse(req["id"], requirement))
 			return
 		}
 
-		// Parse request to get ID
-		var req transport.JSONRPCRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(transport.JSONRPCResponse{
-			ID:     req.ID,
-			Result: json.RawMessage(fmt.Sprintf(`{"data":"response_%d"}`, reqNum)),
-		})
+		_ = json.NewEncoder(w).Encode(createSuccessResponse(req["id"], fmt.Sprintf("response_%d", reqNum), "0xTestWallet"))
 	}))
 	defer server.Close()
 
@@ -676,24 +674,24 @@ func TestX402Transport_SetRequestHandler(t *testing.T) {
 
 func TestX402Transport_PaymentCallbackRejection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(bodyBytes, &req)
+
+		requirement := PaymentRequirement{
+			Scheme:            "exact",
+			Network:           "base-sepolia",
+			MaxAmountRequired: "10000",
+			Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+			PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+			Resource:          "test://resource",
+			Description:       "Test",
+			MaxTimeoutSeconds: 60,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusPaymentRequired)
-		_ = json.NewEncoder(w).Encode(PaymentRequirementsResponse{
-			X402Version: 1,
-			Error:       "Payment required",
-			Accepts: []PaymentRequirement{
-				{
-					Scheme:            "exact",
-					Network:           "base-sepolia",
-					MaxAmountRequired: "10000",
-					Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-					PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
-					Resource:          r.URL.String(),
-					Description:       "Test",
-					MaxTimeoutSeconds: 60,
-				},
-			},
-		})
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(create402JSONRPCResponse(req["id"], requirement))
 	}))
 	defer server.Close()
 
