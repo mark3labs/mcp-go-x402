@@ -14,30 +14,14 @@ type X402Server struct {
 	config    *Config
 }
 
-// Option configures an X402Server
-type Option func(*X402Server)
-
-// WithFacilitator sets a custom facilitator
-func WithFacilitator(f Facilitator) Option {
-	return func(s *X402Server) {
-		// Note: With middleware approach, facilitator is set during server creation
-		// This option is kept for API compatibility but has no effect
-	}
-}
-
 // NewX402Server creates a new x402-enabled MCP server
-func NewX402Server(name, version string, config *Config, opts ...Option) *X402Server {
+func NewX402Server(name, version string, config *Config) *X402Server {
 	// Create base MCP server
 	mcpServer := server.NewMCPServer(name, version)
 
 	srv := &X402Server{
 		mcpServer: mcpServer,
 		config:    config,
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		opt(srv)
 	}
 
 	return srv
