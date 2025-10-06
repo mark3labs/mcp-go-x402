@@ -32,6 +32,12 @@ func create402JSONRPCResponse(id any, requirements PaymentRequirementsResponse) 
 	}
 }
 
+func create402HTTPResponse(w http.ResponseWriter, requirements PaymentRequirementsResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusPaymentRequired)
+	_ = json.NewEncoder(w).Encode(requirements)
+}
+
 func createSuccessResponse(id any, includeSettlement bool) transport.JSONRPCResponse {
 	result := map[string]any{
 		"content": []map[string]any{
@@ -491,6 +497,168 @@ func TestX402Transport_NonExistentServer(t *testing.T) {
 	assert.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "connection refused") ||
 		strings.Contains(err.Error(), "connect: connection refused"))
+}
+
+func TestX402Transport_HTTP402Flow(t *testing.T) {
+	var requestCount int
+	var receivedPaymentHeader string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+
+		var req transport.JSONRPCRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		// First request - return HTTP 402
+		if requestCount == 1 {
+			requirements := PaymentRequirementsResponse{
+				X402Version: 1,
+				Error:       "X-PAYMENT header is required",
+				Accepts: []PaymentRequirement{
+					{
+						Scheme:            "exact",
+						Network:           "base-sepolia",
+						MaxAmountRequired: "1000",
+						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+						PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+						Resource:          "https://api.example.com/data",
+						Description:       "Test HTTP 402 payment",
+						MaxTimeoutSeconds: 60,
+						Extra: map[string]string{
+							"name":    "USDC",
+							"version": "2",
+						},
+					},
+				},
+			}
+			create402HTTPResponse(w, requirements)
+			return
+		}
+
+		// Second request - check for X-PAYMENT header
+		receivedPaymentHeader = r.Header.Get("X-PAYMENT")
+		if receivedPaymentHeader == "" {
+			http.Error(w, "X-PAYMENT header missing", http.StatusBadRequest)
+			return
+		}
+
+		// Verify params._meta does NOT contain payment (HTTP transport only uses headers)
+		var params map[string]any
+		paramsBytes, _ := json.Marshal(req.Params)
+		_ = json.Unmarshal(paramsBytes, &params)
+
+		// Success response
+		response := createSuccessResponse(req.ID, false)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-PAYMENT-RESPONSE", "eyJzdWNjZXNzIjp0cnVlLCJ0cmFuc2FjdGlvbiI6IjB4MTIzIiwibmV0d29yayI6ImJhc2Utc2Vwb2xpYSIsInBheWVyIjoiMHhUZXN0V2FsbGV0In0=") // base64 encoded settlement
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
+	trans, err := New(Config{
+		ServerURL: server.URL,
+		Signer:    signer,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	request := transport.JSONRPCRequest{
+		ID:     mcp.NewRequestId(1),
+		Method: "test.method",
+		Params: json.RawMessage(`{"test": "data"}`),
+	}
+
+	resp, err := trans.SendRequest(ctx, request)
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Nil(t, resp.Error)
+	assert.Equal(t, 2, requestCount, "Should make exactly 2 requests (402 + retry)")
+	assert.NotEmpty(t, receivedPaymentHeader, "Should send X-PAYMENT header on retry")
+}
+
+func TestX402Transport_JSONRPC402FlowBackwardCompatibility(t *testing.T) {
+	var requestCount int
+	var hasPaymentInMeta bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+
+		var req transport.JSONRPCRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		// First request - return JSON-RPC 402 error
+		if requestCount == 1 {
+			response := create402JSONRPCResponse(req.ID, PaymentRequirementsResponse{
+				X402Version: 1,
+				Error:       "Payment required",
+				Accepts: []PaymentRequirement{
+					{
+						Scheme:            "exact",
+						Network:           "base-sepolia",
+						MaxAmountRequired: "1000",
+						Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+						PayTo:             "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+						Resource:          "mcp://test",
+						Description:       "Test JSON-RPC 402 payment",
+						MaxTimeoutSeconds: 60,
+						Extra: map[string]string{
+							"name":    "USDC",
+							"version": "2",
+						},
+					},
+				},
+			})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		// Second request - check for payment in _meta (NOT in header)
+		var params map[string]any
+		paramsBytes, _ := json.Marshal(req.Params)
+		_ = json.Unmarshal(paramsBytes, &params)
+
+		if meta, ok := params["_meta"].(map[string]any); ok {
+			if _, ok := meta["x402/payment"]; ok {
+				hasPaymentInMeta = true
+			}
+		}
+
+		// X-PAYMENT header should NOT be present for JSON-RPC flow
+		xPaymentHeader := r.Header.Get("X-PAYMENT")
+		assert.Empty(t, xPaymentHeader, "X-PAYMENT header should not be set for JSON-RPC 402 flow")
+
+		// Success response
+		response := createSuccessResponse(req.ID, true)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	signer := NewMockSigner("0xTestWallet", AcceptUSDCBaseSepolia())
+	trans, err := New(Config{
+		ServerURL: server.URL,
+		Signer:    signer,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	request := transport.JSONRPCRequest{
+		ID:     mcp.NewRequestId(1),
+		Method: "test.method",
+		Params: json.RawMessage(`{"test": "data"}`),
+	}
+
+	resp, err := trans.SendRequest(ctx, request)
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Nil(t, resp.Error)
+	assert.Equal(t, 2, requestCount, "Should make exactly 2 requests (402 + retry)")
+	assert.True(t, hasPaymentInMeta, "Should send payment in params._meta for JSON-RPC flow")
 }
 
 func TestX402Transport_SetNotificationHandler(t *testing.T) {
