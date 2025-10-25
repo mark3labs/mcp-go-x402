@@ -90,7 +90,7 @@ func main() {
 	if *verbose {
 		config.OnPaymentAttempt = func(event x402.PaymentEvent) {
 			log.Printf("Attempting payment of %s %s to %s",
-				event.Amount, event.Asset, event.Recipient)
+				event.Amount.String(), event.Asset, event.Recipient)
 		}
 		config.OnPaymentSuccess = func(event x402.PaymentEvent) {
 			log.Printf("Payment successful! Transaction: %s", event.Transaction)

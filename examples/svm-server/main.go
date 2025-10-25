@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/gagliardetto/solana-go"
 	x402server "github.com/mark3labs/mcp-go-x402/server"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -23,6 +24,9 @@ func main() {
 
 	if *payTo == "" {
 		log.Fatal("Error: -pay-to flag is required. Please provide a Solana address to receive payments.")
+	}
+	if _, err := solana.PublicKeyFromBase58(*payTo); err != nil {
+		log.Fatalf("Error: -pay-to must be a valid Solana address: %v", err)
 	}
 
 	config := &x402server.Config{

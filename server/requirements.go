@@ -23,13 +23,23 @@ func SetSupportedPayments(supported []SupportedKind) {
 	}
 }
 
-// getExtraForNetwork returns the Extra fields for a network from cached supported payments
+func cloneStringMap(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 func getExtraForNetwork(network string) map[string]string {
 	supportedPaymentsCacheMutex.RLock()
 	defer supportedPaymentsCacheMutex.RUnlock()
 
 	if kind, ok := supportedPaymentsCache[network]; ok {
-		return kind.Extra
+		return cloneStringMap(kind.Extra)
 	}
 	return nil
 }
