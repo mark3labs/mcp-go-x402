@@ -818,3 +818,94 @@ func TestX402Transport_PaymentCallbackRejection(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "payment declined")
 }
+func TestSolanaPaymentFlow(t *testing.T) {
+	var requestCount int
+	var receivedPayment *PaymentPayload
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+
+		var req transport.JSONRPCRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		if requestCount == 1 {
+			requirements := PaymentRequirementsResponse{
+				X402Version: 1,
+				Error:       "Payment required",
+				Accepts: []PaymentRequirement{
+					{
+						Scheme:            "exact",
+						Network:           "solana-devnet",
+						MaxAmountRequired: "1000000",
+						Asset:             "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+						PayTo:             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+						Description:       "Test Solana payment",
+						MaxTimeoutSeconds: 60,
+						Extra: map[string]string{
+							"name":     "USDC (Devnet)",
+							"decimals": "6",
+							"feePayer": "EwWqGE4ZFKLofuestmU4LDdK7XM1N4ALgdZccwYugwGd",
+						},
+					},
+				},
+			}
+			resp := create402JSONRPCResponse(req.ID, requirements)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		var params map[string]any
+		paramsBytes, _ := json.Marshal(req.Params)
+		_ = json.Unmarshal(paramsBytes, &params)
+
+		if meta, ok := params["_meta"].(map[string]any); ok {
+			if paymentData, ok := meta["x402/payment"].(map[string]any); ok {
+				paymentBytes, _ := json.Marshal(paymentData)
+				_ = json.Unmarshal(paymentBytes, &receivedPayment)
+			}
+		}
+
+		response := createSuccessResponse(req.ID, true)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	mockSigner := NewMockSolanaSigner(
+		"DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK",
+		AcceptUSDCSolanaDevnet(),
+	)
+
+	trans, err := New(Config{
+		ServerURL: server.URL,
+		Signers:   []PaymentSigner{mockSigner},
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	request := transport.JSONRPCRequest{
+		ID:     mcp.NewRequestId(1),
+		Method: "test.method",
+		Params: json.RawMessage(`{"test": "solana"}`),
+	}
+
+	resp, err := trans.SendRequest(ctx, request)
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, 2, requestCount, "Should make exactly 2 requests (402 + retry)")
+	assert.NotNil(t, receivedPayment, "Should receive payment payload")
+	assert.Equal(t, "solana-devnet", receivedPayment.Network)
+	assert.Equal(t, "exact", receivedPayment.Scheme)
+
+	if payloadMap, ok := receivedPayment.Payload.(map[string]any); ok {
+		assert.Contains(t, payloadMap, "transaction", "Payload should contain transaction field")
+		txBase64, ok := payloadMap["transaction"].(string)
+		assert.True(t, ok, "Transaction should be a string")
+		assert.NotEmpty(t, txBase64, "Transaction should not be empty")
+	} else {
+		t.Fatal("Payload should be a map[string]any")
+	}
+}
