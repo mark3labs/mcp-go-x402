@@ -75,7 +75,8 @@ func AcceptUSDCSolana() ClientPaymentOption {
 	}
 }
 
-// AcceptUSDCSolanaDevnet creates a client payment option for USDC on Solana devnet
+// AcceptUSDCSolanaDevnet creates a ClientPaymentOption configured for USDC on Solana devnet.
+// The option requires an exact payment to the devnet USDC mint, sets Priority to 2, and uses NetworkID "devnet".
 func AcceptUSDCSolanaDevnet() ClientPaymentOption {
 	return ClientPaymentOption{
 		PaymentRequirement: PaymentRequirement{

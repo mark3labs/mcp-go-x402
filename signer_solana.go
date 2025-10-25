@@ -19,6 +19,9 @@ type SolanaPrivateKeySigner struct {
 	priority       int
 }
 
+// NewSolanaPrivateKeySigner creates a SolanaPrivateKeySigner from a Base58-encoded private key and one or more payment options.
+// It validates and decodes the private key, derives the corresponding public key, and requires at least one ClientPaymentOption (the options are sorted by Priority).
+// Returns the constructed signer, or an error if the private key is invalid (wrapped with ErrInvalidPrivateKey) or no payment options are provided.
 func NewSolanaPrivateKeySigner(privateKeyBase58 string, options ...ClientPaymentOption) (*SolanaPrivateKeySigner, error) {
 	privateKey, err := solana.PrivateKeyFromBase58(privateKeyBase58)
 	if err != nil {
@@ -207,6 +210,13 @@ func (s *SolanaPrivateKeySigner) SignPayment(ctx context.Context, req PaymentReq
 	}, nil
 }
 
+// NewSolanaPrivateKeySignerFromFile creates a SolanaPrivateKeySigner from a Solana keypair file.
+//
+// NewSolanaPrivateKeySignerFromFile loads a private key from the given Solana keygen file, validates
+// that at least one payment option is provided, sorts the options by Priority in ascending order,
+// and returns a configured SolanaPrivateKeySigner.
+//
+// The function returns an error if the keypair file cannot be loaded or if no payment options are supplied.
 func NewSolanaPrivateKeySignerFromFile(filepath string, options ...ClientPaymentOption) (*SolanaPrivateKeySigner, error) {
 	privateKey, err := solana.PrivateKeyFromSolanaKeygenFile(filepath)
 	if err != nil {
@@ -234,6 +244,8 @@ type MockSolanaSigner struct {
 	priority       int
 }
 
+// NewMockSolanaSigner creates a MockSolanaSigner for the given address using the provided payment options.
+// If no options are provided it defaults to AcceptUSDCSolanaDevnet(). Options are sorted by Priority in ascending order.
 func NewMockSolanaSigner(address string, options ...ClientPaymentOption) *MockSolanaSigner {
 	if len(options) == 0 {
 		options = []ClientPaymentOption{AcceptUSDCSolanaDevnet()}

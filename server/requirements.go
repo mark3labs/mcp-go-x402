@@ -13,7 +13,9 @@ var (
 )
 
 // SetSupportedPayments caches the supported payment methods from the facilitator
-// This is called automatically when the server initializes
+// SetSupportedPayments populates the package-level supported payments cache with the provided
+// SupportedKind slice, indexing entries by their Network field and replacing any existing entry
+// for the same network. It is safe for concurrent use.
 func SetSupportedPayments(supported []SupportedKind) {
 	supportedPaymentsCacheMutex.Lock()
 	defer supportedPaymentsCacheMutex.Unlock()
@@ -23,6 +25,8 @@ func SetSupportedPayments(supported []SupportedKind) {
 	}
 }
 
+// cloneStringMap returns a shallow copy of the provided map of strings.
+// If the input is nil, cloneStringMap returns nil.
 func cloneStringMap(in map[string]string) map[string]string {
 	if in == nil {
 		return nil
@@ -34,6 +38,8 @@ func cloneStringMap(in map[string]string) map[string]string {
 	return out
 }
 
+// getExtraForNetwork retrieves a shallow copy of the Extra fields for the specified network from the supportedPaymentsCache.
+// The returned map is a new map that may be modified by the caller; returns nil if no entry exists for the network.
 func getExtraForNetwork(network string) map[string]string {
 	supportedPaymentsCacheMutex.RLock()
 	defer supportedPaymentsCacheMutex.RUnlock()
@@ -62,7 +68,8 @@ func RequireUSDCBase(payTo, amount, description string) PaymentRequirement {
 	}
 }
 
-// RequireUSDCBaseSepolia creates a payment requirement for USDC on Base Sepolia testnet
+// RequireUSDCBaseSepolia creates a PaymentRequirement configured for USDC on the Base Sepolia testnet.
+// The requirement uses the Base Sepolia USDC mint address, the "exact" scheme, a 60-second timeout, and Extra fields "name" and "version".
 func RequireUSDCBaseSepolia(payTo, amount, description string) PaymentRequirement {
 	return PaymentRequirement{
 		Scheme:            "exact",
@@ -81,7 +88,11 @@ func RequireUSDCBaseSepolia(payTo, amount, description string) PaymentRequiremen
 }
 
 // RequireUSDCSolana creates a payment requirement for USDC on Solana mainnet
-// The feePayer is automatically populated from the facilitator's /supported endpoint
+// RequireUSDCSolana creates a PaymentRequirement for USDC on the Solana mainnet.
+// It sets network to "solana", the asset to the USDC mint, a 60-second timeout,
+// and default Extra fields "decimals"="6" and "name"="USD Coin".
+// If facilitator-provided Extra fields exist for "solana", they are merged into
+// the Extra map, overwriting the defaults (commonly used to supply a feePayer).
 func RequireUSDCSolana(payTo, amount, description string) PaymentRequirement {
 	extra := map[string]string{
 		"decimals": "6",
@@ -109,7 +120,9 @@ func RequireUSDCSolana(payTo, amount, description string) PaymentRequirement {
 }
 
 // RequireUSDCSolanaDevnet creates a payment requirement for USDC on Solana devnet
-// The feePayer is automatically populated from the facilitator's /supported endpoint
+// RequireUSDCSolanaDevnet constructs a PaymentRequirement for USDC on the Solana Devnet.
+// The requirement uses the Devnet USDC mint, sets network to "solana-devnet", a 60-second timeout,
+// and merges any facilitator-provided Extra fields (including a `feePayer` if present) into the returned Extra map.
 func RequireUSDCSolanaDevnet(payTo, amount, description string) PaymentRequirement {
 	extra := map[string]string{
 		"decimals": "6",

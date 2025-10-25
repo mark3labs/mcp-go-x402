@@ -11,6 +11,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// main starts the x402 SVM MCP server configured by command-line flags.
+// It parses flags (port, facilitator, pay-to, verify-only, devnet, v), validates the required Solana payment recipient,
+// registers tools (a payable "search", a free "echo", and an optional devnet-only payable "test-feature"),
+// logs startup and tool information, and begins serving on the specified port.
 func main() {
 	var (
 		port           = flag.String("port", "8080", "Port to listen on")
@@ -123,6 +127,13 @@ func main() {
 	}
 }
 
+// searchHandler validates the request and returns a textual list of mock search results for the given query.
+// 
+// The request must include a non-empty "query" string; an error is returned if "query" is empty. The optional
+// "max_results" numeric input controls how many top results are shown (default 5).
+//
+// The function returns an *mcp.CallToolResult whose content is a text block containing mock search result
+// entries that incorporate the provided query and indicate the top N results.
 func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	query := request.GetString("query", "")
 	maxResults := request.GetFloat("max_results", 5)
@@ -158,6 +169,8 @@ Showing top %.0f results`,
 	}, nil
 }
 
+// echoHandler validates the "message" input and returns an MCP result containing "Echo: <message>".
+// If the "message" input is empty, it returns an error indicating the parameter is required.
 func echoHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	message := request.GetString("message", "")
 
@@ -174,6 +187,9 @@ func echoHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	}, nil
 }
 
+// testFeatureHandler validates the required "input" parameter and returns a text result for the "test-feature" tool.
+// If "input" is empty the function returns an error. Otherwise it returns an *mcp.CallToolResult containing a single
+// text content with the message "Test feature processed: <input>".
 func testFeatureHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	input := request.GetString("input", "")
 

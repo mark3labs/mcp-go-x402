@@ -17,7 +17,8 @@ type X402Server struct {
 	config    *Config
 }
 
-// NewX402Server creates a new x402-enabled MCP server
+// NewX402Server constructs and returns a new X402-enabled MCP server with the given name, version, and configuration.
+// If the provided config contains a FacilitatorURL, the server will attempt to fetch and cache supported payment methods from that facilitator during initialization.
 func NewX402Server(name, version string, config *Config) *X402Server {
 	// Create base MCP server
 	mcpServer := server.NewMCPServer(name, version)

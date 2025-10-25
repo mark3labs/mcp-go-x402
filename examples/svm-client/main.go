@@ -11,6 +11,12 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// main is the entry point for the example SVM client.
+// It parses CLI flags (key, keypair, server, network, verbose), creates a Solana payment signer
+// (from a private key or keypair file, configured for devnet or mainnet), constructs an x402 transport
+// and MCP client, starts and initializes the client session, lists available tools, calls the
+// "echo" tool and logs its response, then calls the "search" tool for "Solana" and logs the first
+// text result. Fatal errors stop the program.
 func main() {
 	var (
 		privateKeyFlag = flag.String("key", "", "Solana private key base58 (or set SOLANA_PRIVATE_KEY env var)")

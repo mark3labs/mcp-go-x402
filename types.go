@@ -52,7 +52,7 @@ type PaymentAuthorization struct {
 	Nonce       string `json:"nonce"`
 }
 
-// NewSVMPayload creates a Solana (SVM) payment payload with a base64-encoded transaction
+// NewSVMPayload returns a map representing a Solana (SVM) payment payload whose "transaction" field is the provided base64-encoded transaction string.
 func NewSVMPayload(transactionBase64 string) map[string]any {
 	return map[string]any{
 		"transaction": transactionBase64,
