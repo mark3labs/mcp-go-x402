@@ -71,7 +71,7 @@ func main() {
 	// Create x402 transport with optional verbose logging
 	config := x402.Config{
 		ServerURL: *serverURL,
-		Signer:    signer,
+		Signers:   []x402.PaymentSigner{signer},
 	}
 
 	if *verbose {
