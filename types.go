@@ -69,25 +69,32 @@ type SettlementResponse struct {
 
 // PaymentEvent represents a payment lifecycle event
 type PaymentEvent struct {
-	Type        PaymentEventType
-	Resource    string
-	Method      string
-	Amount      *big.Int
-	Network     string
-	Asset       string
-	Recipient   string
-	Transaction string
-	Error       error
-	Timestamp   int64
+	Type           PaymentEventType
+	Resource       string
+	Method         string
+	Amount         *big.Int
+	Network        string
+	Asset          string
+	Recipient      string
+	Transaction    string
+	Error          error
+	Timestamp      int64
+	SignerIndex    int    // Position in signers array
+	SignerPriority int    // Signer's priority value
+	SignerAddress  string // Signer's address
+	AttemptNumber  int    // Sequential attempt count
 }
 
 // PaymentEventType represents types of payment events
 type PaymentEventType string
 
 const (
-	PaymentEventAttempt PaymentEventType = "attempt"
-	PaymentEventSuccess PaymentEventType = "success"
-	PaymentEventFailure PaymentEventType = "failure"
+	PaymentEventAttempt       PaymentEventType = "attempt"
+	PaymentEventSuccess       PaymentEventType = "success"
+	PaymentEventFailure       PaymentEventType = "failure"
+	PaymentEventSignerAttempt PaymentEventType = "signer_attempt"
+	PaymentEventSignerSuccess PaymentEventType = "signer_success"
+	PaymentEventSignerFailure PaymentEventType = "signer_failure"
 )
 
 // ClientPaymentOption represents a payment method the client accepts

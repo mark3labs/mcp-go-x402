@@ -5,20 +5,22 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"time"
 )
 
 // PaymentHandler handles x402 payment operations
 type PaymentHandler struct {
-	signer PaymentSigner
-	config *HandlerConfig
+	signers []PaymentSigner
+	config  *HandlerConfig
 }
 
 // HandlerConfig configures the payment handler
 type HandlerConfig struct {
 	PaymentCallback func(amount *big.Int, resource string) bool
+	OnSignerAttempt func(PaymentEvent)
 }
 
-// NewPaymentHandler creates a new payment handler
+// NewPaymentHandler creates a new payment handler (backward compatibility)
 func NewPaymentHandler(signer PaymentSigner, config *HandlerConfig) (*PaymentHandler, error) {
 	if signer == nil {
 		return nil, fmt.Errorf("signer cannot be nil")
@@ -29,9 +31,25 @@ func NewPaymentHandler(signer PaymentSigner, config *HandlerConfig) (*PaymentHan
 	}
 
 	return &PaymentHandler{
-		signer: signer,
-		config: config,
+		signers: []PaymentSigner{signer},
+		config:  config,
 	}, nil
+}
+
+// NewPaymentHandlerMulti creates a new payment handler with multiple signers
+func NewPaymentHandlerMulti(signers []PaymentSigner, config *HandlerConfig) *PaymentHandler {
+	if len(signers) == 0 {
+		panic("no signers provided")
+	}
+
+	if config == nil {
+		config = &HandlerConfig{}
+	}
+
+	return &PaymentHandler{
+		signers: signers,
+		config:  config,
+	}
 }
 
 // ShouldPay determines if a payment should be made
@@ -57,33 +75,45 @@ func (h *PaymentHandler) ShouldPay(req PaymentRequirement) (bool, error) {
 
 // CreatePayment creates a signed payment for the given requirements
 func (h *PaymentHandler) CreatePayment(ctx context.Context, reqs PaymentRequirementsResponse) (*PaymentPayload, error) {
-	// Select best payment method
-	selected, err := h.selectPaymentMethod(reqs.Accepts)
-	if err != nil {
-		return nil, err
+	// For backward compatibility, check if we have single or multiple signers
+	if len(h.signers) == 1 {
+		// Single signer - use existing logic for backward compatibility
+		selected, err := h.selectPaymentMethodForSigner(h.signers[0], reqs.Accepts)
+		if err != nil {
+			return nil, err
+		}
+
+		shouldPay, err := h.ShouldPay(*selected)
+		if err != nil {
+			return nil, err
+		}
+
+		if !shouldPay {
+			return nil, fmt.Errorf("payment declined by policy")
+		}
+
+		payload, err := h.signers[0].SignPayment(ctx, *selected)
+		if err != nil {
+			return nil, fmt.Errorf("signing payment: %w", ErrSigningFailed)
+		}
+
+		return payload, nil
 	}
 
-	// Check if we should pay
-	shouldPay, err := h.ShouldPay(*selected)
-	if err != nil {
-		return nil, err
-	}
-
-	if !shouldPay {
-		return nil, fmt.Errorf("payment declined by policy")
-	}
-
-	// Sign the payment
-	payment, err := h.signer.SignPayment(ctx, *selected)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign payment: %w", err)
-	}
-
-	return payment, nil
+	// Multiple signers - use fallback logic
+	return h.selectPaymentWithFallback(ctx, reqs.Accepts)
 }
 
-// selectPaymentMethod selects the best payment method from available options
+// selectPaymentMethod selects the best payment method from available options (legacy)
 func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*PaymentRequirement, error) {
+	if len(h.signers) == 0 {
+		return nil, ErrNoAcceptablePayment
+	}
+	return h.selectPaymentMethodForSigner(h.signers[0], accepts)
+}
+
+// selectPaymentMethodForSigner selects payment method for a specific signer
+func (h *PaymentHandler) selectPaymentMethodForSigner(signer PaymentSigner, accepts []PaymentRequirement) (*PaymentRequirement, error) {
 	if len(accepts) == 0 {
 		return nil, ErrNoAcceptablePayment
 	}
@@ -98,7 +128,7 @@ func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*Pay
 
 	for _, req := range accepts {
 		// Check if we support this network and asset
-		option := h.signer.GetPaymentOption(req.Network, req.Asset)
+		option := signer.GetPaymentOption(req.Network, req.Asset)
 		if option == nil {
 			continue
 		}
@@ -138,7 +168,8 @@ func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*Pay
 	}
 
 	if len(candidates) == 0 {
-		return nil, ErrNoAcceptablePayment
+		return nil, fmt.Errorf("no payment option for network=%s asset=%s",
+			accepts[0].Network, accepts[0].Asset)
 	}
 
 	// Sort by priority first, then by amount
@@ -150,4 +181,115 @@ func (h *PaymentHandler) selectPaymentMethod(accepts []PaymentRequirement) (*Pay
 	})
 
 	return &candidates[0].req, nil
+}
+
+// selectPaymentWithFallback tries each signer in priority order until one succeeds
+func (h *PaymentHandler) selectPaymentWithFallback(ctx context.Context, requirements []PaymentRequirement) (*PaymentPayload, error) {
+	if len(requirements) == 0 {
+		return nil, ErrNoAcceptablePayment
+	}
+
+	var failures []SignerFailure
+	attemptNumber := 0
+
+	for idx, signer := range h.signers {
+		attemptNumber++
+
+		// Emit signer attempt event
+		if h.config.OnSignerAttempt != nil {
+			event := PaymentEvent{
+				Type:           PaymentEventSignerAttempt,
+				SignerIndex:    idx,
+				SignerPriority: signer.GetPriority(),
+				SignerAddress:  signer.GetAddress(),
+				AttemptNumber:  attemptNumber,
+				Timestamp:      time.Now().Unix(),
+			}
+			h.config.OnSignerAttempt(event)
+		}
+
+		// Try to select payment method for this signer
+		selected, err := h.selectPaymentMethodForSigner(signer, requirements)
+		if err != nil {
+			// Record failure and continue to next signer
+			failures = append(failures, SignerFailure{
+				SignerIndex:    idx,
+				SignerPriority: signer.GetPriority(),
+				SignerAddress:  signer.GetAddress(),
+				Reason:         err.Error(),
+				WrappedError:   err,
+			})
+
+			// Emit failure event
+			if h.config.OnSignerAttempt != nil {
+				event := PaymentEvent{
+					Type:           PaymentEventSignerFailure,
+					SignerIndex:    idx,
+					SignerPriority: signer.GetPriority(),
+					SignerAddress:  signer.GetAddress(),
+					AttemptNumber:  attemptNumber,
+					Error:          err,
+					Timestamp:      time.Now().Unix(),
+				}
+				h.config.OnSignerAttempt(event)
+			}
+			continue
+		}
+
+		// Check payment callback
+		shouldPay, err := h.ShouldPay(*selected)
+		if err != nil || !shouldPay {
+			if err == nil {
+				err = fmt.Errorf("payment declined by policy")
+			}
+			failures = append(failures, SignerFailure{
+				SignerIndex:    idx,
+				SignerPriority: signer.GetPriority(),
+				SignerAddress:  signer.GetAddress(),
+				Reason:         err.Error(),
+				WrappedError:   err,
+			})
+			continue
+		}
+
+		// Try to sign the payment
+		payload, err := signer.SignPayment(ctx, *selected)
+		if err != nil {
+			failures = append(failures, SignerFailure{
+				SignerIndex:    idx,
+				SignerPriority: signer.GetPriority(),
+				SignerAddress:  signer.GetAddress(),
+				Reason:         fmt.Sprintf("signing failed: %v", err),
+				WrappedError:   err,
+			})
+			continue
+		}
+
+		// Success - emit event and return
+		if h.config.OnSignerAttempt != nil {
+			amount := new(big.Int)
+			amount.SetString(selected.MaxAmountRequired, 10)
+			event := PaymentEvent{
+				Type:           PaymentEventSignerSuccess,
+				SignerIndex:    idx,
+				SignerPriority: signer.GetPriority(),
+				SignerAddress:  signer.GetAddress(),
+				AttemptNumber:  attemptNumber,
+				Amount:         amount,
+				Network:        selected.Network,
+				Asset:          selected.Asset,
+				Recipient:      selected.PayTo,
+				Timestamp:      time.Now().Unix(),
+			}
+			h.config.OnSignerAttempt(event)
+		}
+
+		return payload, nil
+	}
+
+	// All signers failed - return aggregated error
+	return nil, &MultiSignerError{
+		Message:        "no viable payment option found",
+		SignerFailures: failures,
+	}
 }
