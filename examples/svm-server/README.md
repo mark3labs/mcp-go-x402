@@ -5,7 +5,7 @@ Example x402 MCP server that requires Solana (SVM) payments.
 ## Prerequisites
 
 1. Solana recipient address to receive payments
-2. Running x402 facilitator with SVM support (the feePayer is automatically fetched)
+2. Running x402 facilitator with SVM support
 
 ## Setup
 
@@ -52,14 +52,4 @@ go run main.go \
 - **echo** (free): No payment required
 - **test-feature** (devnet only): Requires 0.001 USDC payment
 
-## Important Notes
 
-### Fee Payer (Automatic)
-Unlike EVM where the payer covers gas fees, Solana requires a fee payer for transactions. The facilitator acts as the fee payer and their address is **automatically fetched** from the facilitator's `/supported` endpoint:
-
-- Server calls facilitator's `/supported` to get the feePayer address
-- Client creates and signs the transaction with that feePayer
-- Facilitator adds their signature as fee payer
-- Facilitator submits the transaction to Solana
-
-No need to manually specify the fee payer address!

@@ -45,16 +45,14 @@ import (
 )
 
 func main() {
-    // Create signer with your private key and explicit payment options
     signer, err := x402.NewPrivateKeySigner(
         "YOUR_PRIVATE_KEY_HEX",
-        x402.AcceptUSDCBase(), // Accept USDC on Base mainnet
+        x402.AcceptUSDCBase(),
     )
     if err != nil {
         log.Fatal(err)
     }
     
-    // Create x402 transport
     transport, err := x402.New(x402.Config{
         ServerURL: "https://paid-mcp-server.example.com",
         Signers:   []x402.PaymentSigner{signer},
@@ -63,7 +61,6 @@ func main() {
         log.Fatal(err)
     }
     
-    // Create MCP client with x402 transport
     mcpClient := client.NewClient(transport)
     
     ctx := context.Background()
@@ -72,7 +69,6 @@ func main() {
     }
     defer mcpClient.Close()
     
-    // Initialize MCP session
     _, err = mcpClient.Initialize(ctx, mcp.InitializeRequest{
         Params: mcp.InitializeParams{
             ProtocolVersion: "1.0.0",
@@ -86,7 +82,6 @@ func main() {
         log.Fatal(err)
     }
     
-    // Use MCP client normally - payments handled automatically!
     tools, _ := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
     log.Printf("Found %d tools", len(tools.Tools))
 }
@@ -129,10 +124,8 @@ func main() {
             mcp.WithDescription("Premium feature"),
             mcp.WithString("input", mcp.Required())),
         premiumToolHandler,
-    // Option 1: Pay with USDC on Base
-    x402server.RequireUSDCBase("0xYourWallet", "10000", "Premium feature via Base"),
-    // Option 2: Pay with USDC on Base Sepolia (testnet)
-    x402server.RequireUSDCBaseSepolia("0xYourWallet", "5000", "Premium feature via Base Sepolia (testnet)"),
+        x402server.RequireUSDCBase("0xYourWallet", "10000", "Premium feature"),
+        x402server.RequireUSDCBaseSepolia("0xYourWallet", "5000", "Premium feature (testnet)"),
     )
     
     // Start server
@@ -186,15 +179,13 @@ transport, err := x402.New(x402.Config{
 ### Server Usage with Solana
 
 ```go
-// Add paid tool requiring Solana payment
 srv.AddPayableTool(
     mcp.NewTool("premium-search",
         mcp.WithDescription("Premium search on Solana")),
     searchHandler,
     x402server.RequireUSDCSolanaDevnet(
-        recipientAddress,     // Where to receive USDC
-        feePayerAddress,      // Facilitator's address (pays transaction fees)
-        "1000000",            // 1 USDC (6 decimals)
+        recipientAddress,
+        "1000000",
         "Premium search access",
     ),
 )
@@ -202,22 +193,17 @@ srv.AddPayableTool(
 
 ### Multi-Chain Support
 
-You can configure clients to support both EVM and Solana payments with priority-based fallback:
-
 ```go
-// EVM signer (higher priority)
 evmSigner, _ := x402.NewPrivateKeySigner(
     evmPrivateKey, 
     x402.AcceptUSDCBaseSepolia().WithPriority(1),
 )
 
-// Solana signer (fallback)
 solSigner, _ := x402.NewSolanaPrivateKeySigner(
     solPrivateKey,
     x402.AcceptUSDCSolanaDevnet().WithPriority(2),
 )
 
-// Client will try EVM first, then Solana
 transport, _ := x402.New(x402.Config{
     ServerURL: serverURL,
     Signers:   []x402.PaymentSigner{evmSigner, solSigner},
@@ -231,11 +217,10 @@ transport, _ := x402.New(x402.Config{
 ### Basic Configuration
 
 ```go
-// Create signer with explicit payment options
 signer, err := x402.NewPrivateKeySigner(
     privateKey,
-    x402.AcceptUSDCBase(),       // Accept USDC on Base
-    x402.AcceptUSDCBaseSepolia(), // Accept USDC on Base Sepolia (testnet)
+    x402.AcceptUSDCBase(),
+    x402.AcceptUSDCBaseSepolia(),
 )
 
 config := x402.Config{
@@ -251,13 +236,11 @@ config := x402.Config{
     ServerURL: "https://server.example.com",
     Signers:   []x402.PaymentSigner{signer},
     PaymentCallback: func(amount *big.Int, resource string) bool {
-        // Custom logic to approve/decline payments
-        // Return true to approve, false to decline
-        if amount.Cmp(big.NewInt(100000)) > 0 { // More than 0.1 USDC
+        if amount.Cmp(big.NewInt(100000)) > 0 {
             fmt.Printf("Approve payment of %s for %s? ", amount, resource)
             return getUserApproval()
         }
-        return true // Auto-approve small amounts
+        return true
     },
 }
 ```

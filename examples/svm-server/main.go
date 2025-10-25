@@ -36,14 +36,12 @@ func main() {
 	var searchPaymentReq x402server.PaymentRequirement
 	if *devnet {
 		searchPaymentReq = x402server.RequireUSDCSolanaDevnet(
-			*facilitatorURL,
 			*payTo,
 			"10000",
 			"Premium search service - 0.01 USDC on Solana devnet",
 		)
 	} else {
 		searchPaymentReq = x402server.RequireUSDCSolana(
-			*facilitatorURL,
 			*payTo,
 			"10000",
 			"Premium search service - 0.01 USDC on Solana",
@@ -76,7 +74,6 @@ func main() {
 			),
 			testFeatureHandler,
 			x402server.RequireUSDCSolanaDevnet(
-				*facilitatorURL,
 				*payTo,
 				"1000",
 				"Test payment on Solana devnet - 0.001 USDC",

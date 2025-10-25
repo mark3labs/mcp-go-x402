@@ -1,11 +1,38 @@
 package server
 
 import (
-	"context"
-	"log"
+	"sync"
 )
 
 // Helper functions for common payment requirements with USDC on Base network
+
+var (
+	// supportedPaymentsCache stores supported payment info by network
+	supportedPaymentsCache      = make(map[string]SupportedKind)
+	supportedPaymentsCacheMutex sync.RWMutex
+)
+
+// SetSupportedPayments caches the supported payment methods from the facilitator
+// This is called automatically when the server initializes
+func SetSupportedPayments(supported []SupportedKind) {
+	supportedPaymentsCacheMutex.Lock()
+	defer supportedPaymentsCacheMutex.Unlock()
+
+	for _, kind := range supported {
+		supportedPaymentsCache[kind.Network] = kind
+	}
+}
+
+// getExtraForNetwork returns the Extra fields for a network from cached supported payments
+func getExtraForNetwork(network string) map[string]string {
+	supportedPaymentsCacheMutex.RLock()
+	defer supportedPaymentsCacheMutex.RUnlock()
+
+	if kind, ok := supportedPaymentsCache[network]; ok {
+		return kind.Extra
+	}
+	return nil
+}
 
 // RequireUSDCBase creates a payment requirement for USDC on Base mainnet
 func RequireUSDCBase(payTo, amount, description string) PaymentRequirement {
@@ -44,9 +71,20 @@ func RequireUSDCBaseSepolia(payTo, amount, description string) PaymentRequiremen
 }
 
 // RequireUSDCSolana creates a payment requirement for USDC on Solana mainnet
-// The feePayer is automatically fetched from the facilitator's /supported endpoint
-func RequireUSDCSolana(facilitatorURL, payTo, amount, description string) PaymentRequirement {
-	feePayer := fetchFeePayerFromFacilitator(facilitatorURL, "solana")
+// The feePayer is automatically populated from the facilitator's /supported endpoint
+func RequireUSDCSolana(payTo, amount, description string) PaymentRequirement {
+	extra := map[string]string{
+		"decimals": "6",
+		"name":     "USD Coin",
+	}
+
+	// Merge in any extra fields from facilitator's supported payments (including feePayer)
+	if facilitatorExtra := getExtraForNetwork("solana"); facilitatorExtra != nil {
+		for k, v := range facilitatorExtra {
+			extra[k] = v
+		}
+	}
+
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "solana",
@@ -56,18 +94,25 @@ func RequireUSDCSolana(facilitatorURL, payTo, amount, description string) Paymen
 		Description:       description,
 		MimeType:          "application/json",
 		MaxTimeoutSeconds: 60,
-		Extra: map[string]string{
-			"feePayer": feePayer,
-			"decimals": "6",
-			"name":     "USD Coin",
-		},
+		Extra:             extra,
 	}
 }
 
 // RequireUSDCSolanaDevnet creates a payment requirement for USDC on Solana devnet
-// The feePayer is automatically fetched from the facilitator's /supported endpoint
-func RequireUSDCSolanaDevnet(facilitatorURL, payTo, amount, description string) PaymentRequirement {
-	feePayer := fetchFeePayerFromFacilitator(facilitatorURL, "solana-devnet")
+// The feePayer is automatically populated from the facilitator's /supported endpoint
+func RequireUSDCSolanaDevnet(payTo, amount, description string) PaymentRequirement {
+	extra := map[string]string{
+		"decimals": "6",
+		"name":     "USDC (Devnet)",
+	}
+
+	// Merge in any extra fields from facilitator's supported payments (including feePayer)
+	if facilitatorExtra := getExtraForNetwork("solana-devnet"); facilitatorExtra != nil {
+		for k, v := range facilitatorExtra {
+			extra[k] = v
+		}
+	}
+
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "solana-devnet",
@@ -77,33 +122,6 @@ func RequireUSDCSolanaDevnet(facilitatorURL, payTo, amount, description string) 
 		Description:       description,
 		MimeType:          "application/json",
 		MaxTimeoutSeconds: 60,
-		Extra: map[string]string{
-			"feePayer": feePayer,
-			"decimals": "6",
-			"name":     "USDC (Devnet)",
-		},
+		Extra:             extra,
 	}
-}
-
-// fetchFeePayerFromFacilitator fetches the feePayer address for a given network from the facilitator
-func fetchFeePayerFromFacilitator(facilitatorURL, network string) string {
-	facilitator := NewHTTPFacilitator(facilitatorURL)
-	ctx := context.Background()
-
-	supported, err := facilitator.GetSupported(ctx)
-	if err != nil {
-		log.Printf("Warning: failed to fetch supported payments from facilitator: %v", err)
-		return ""
-	}
-
-	for _, kind := range supported {
-		if kind.Network == network && kind.Extra != nil {
-			if feePayer, ok := kind.Extra["feePayer"]; ok {
-				return feePayer
-			}
-		}
-	}
-
-	log.Printf("Warning: feePayer not found for network %s in facilitator's supported list", network)
-	return ""
 }

@@ -39,3 +39,6 @@ coverage.html
 examples/client/client
 examples/server/server
 examples/client/basic-x402
+.git/
+svm-server
+svm-client
