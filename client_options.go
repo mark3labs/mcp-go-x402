@@ -57,3 +57,37 @@ func (opt ClientPaymentOption) WithMinBalance(amount string) ClientPaymentOption
 	opt.MinBalance = amount
 	return opt
 }
+
+// AcceptUSDCSolana creates a client payment option for USDC on Solana mainnet
+func AcceptUSDCSolana() ClientPaymentOption {
+	return ClientPaymentOption{
+		PaymentRequirement: PaymentRequirement{
+			Scheme:  "exact",
+			Network: "solana",
+			Asset:   "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC mint
+			Extra: map[string]string{
+				"name":     "USD Coin",
+				"decimals": "6",
+			},
+		},
+		Priority:  2,
+		NetworkID: "mainnet-beta",
+	}
+}
+
+// AcceptUSDCSolanaDevnet creates a client payment option for USDC on Solana devnet
+func AcceptUSDCSolanaDevnet() ClientPaymentOption {
+	return ClientPaymentOption{
+		PaymentRequirement: PaymentRequirement{
+			Scheme:  "exact",
+			Network: "solana-devnet",
+			Asset:   "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", // Devnet USDC mint
+			Extra: map[string]string{
+				"name":     "USDC (Devnet)",
+				"decimals": "6",
+			},
+		},
+		Priority:  2,
+		NetworkID: "devnet",
+	}
+}

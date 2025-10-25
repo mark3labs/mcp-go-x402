@@ -166,11 +166,15 @@ func TestX402Handler_WithValidPayment(t *testing.T) {
 		X402Version: 1,
 		Scheme:      "exact",
 		Network:     "test",
+		Payload: map[string]any{
+			"signature": "0xsig",
+			"authorization": map[string]any{
+				"from":  "0xpayer",
+				"to":    "0xusdc", // Asset address in EIP-3009
+				"value": "1000",
+			},
+		},
 	}
-	payment.Payload.Signature = "0xsig"
-	payment.Payload.Authorization.From = "0xpayer"
-	payment.Payload.Authorization.To = "0xusdc" // Asset address in EIP-3009
-	payment.Payload.Authorization.Value = "1000"
 
 	// Request with payment in _meta
 	reqJSON := map[string]any{
@@ -388,11 +392,15 @@ func TestX402Handler_PaymentMatching(t *testing.T) {
 		X402Version: 1,
 		Scheme:      "exact",
 		Network:     "base-mainnet",
+		Payload: map[string]any{
+			"signature": "0xsig",
+			"authorization": map[string]any{
+				"from":  "0xpayer",
+				"to":    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base USDC
+				"value": "500000",
+			},
+		},
 	}
-	payment.Payload.Signature = "0xsig"
-	payment.Payload.Authorization.From = "0xpayer"
-	payment.Payload.Authorization.To = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" // Base USDC
-	payment.Payload.Authorization.Value = "500000"
 
 	// Request with payment in _meta
 	reqJSON := map[string]any{

@@ -20,9 +20,10 @@ type Facilitator interface {
 
 // SupportedKind represents a supported payment scheme/network combination
 type SupportedKind struct {
-	X402Version int    `json:"x402Version"`
-	Scheme      string `json:"scheme"`
-	Network     string `json:"network"`
+	X402Version int               `json:"x402Version"`
+	Scheme      string            `json:"scheme"`
+	Network     string            `json:"network"`
+	Extra       map[string]string `json:"extra,omitempty"`
 }
 
 // HTTPFacilitator implements Facilitator using HTTP API
@@ -56,11 +57,16 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 
 	if f.verbose {
 		log.Printf("[Facilitator] Sending verify request to %s/verify", f.baseURL)
-		log.Printf("[Facilitator] Payment: from=%s, to=%s, value=%s, network=%s",
-			payment.Payload.Authorization.From,
-			payment.Payload.Authorization.To,
-			payment.Payload.Authorization.Value,
-			payment.Network)
+		if payment.Network == "solana" || payment.Network == "solana-devnet" {
+			log.Printf("[Facilitator] Payment: network=%s, type=SVM", payment.Network)
+		} else {
+			if payloadMap, ok := payment.Payload.(map[string]any); ok {
+				if authData, ok := payloadMap["authorization"].(map[string]any); ok {
+					log.Printf("[Facilitator] Payment: from=%v, to=%v, value=%v, network=%s",
+						authData["from"], authData["to"], authData["value"], payment.Network)
+				}
+			}
+		}
 	}
 
 	body, err := json.Marshal(req)

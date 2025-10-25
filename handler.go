@@ -94,7 +94,7 @@ func (h *PaymentHandler) CreatePayment(ctx context.Context, reqs PaymentRequirem
 
 		payload, err := h.signers[0].SignPayment(ctx, *selected)
 		if err != nil {
-			return nil, fmt.Errorf("signing payment: %w", ErrSigningFailed)
+			return nil, fmt.Errorf("signing payment: %w", err)
 		}
 
 		return payload, nil

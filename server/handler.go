@@ -133,11 +133,22 @@ func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.config.Verbose {
-		log.Printf("[X402] Payment parsed: network=%s, scheme=%s, from=%s, to=%s, value=%s",
-			payment.Network, payment.Scheme,
-			payment.Payload.Authorization.From,
-			payment.Payload.Authorization.To,
-			payment.Payload.Authorization.Value)
+		if payment.Network == "solana" || payment.Network == "solana-devnet" {
+			log.Printf("[X402] Payment parsed: network=%s, scheme=%s, type=SVM",
+				payment.Network, payment.Scheme)
+		} else {
+			if payloadMap, ok := payment.Payload.(map[string]any); ok {
+				if authData, ok := payloadMap["authorization"].(map[string]any); ok {
+					log.Printf("[X402] Payment parsed: network=%s, scheme=%s, from=%v, to=%v, value=%v",
+						payment.Network, payment.Scheme,
+						authData["from"], authData["to"], authData["value"])
+				} else {
+					log.Printf("[X402] Payment parsed: network=%s, scheme=%s", payment.Network, payment.Scheme)
+				}
+			} else {
+				log.Printf("[X402] Payment parsed: network=%s, scheme=%s", payment.Network, payment.Scheme)
+			}
+		}
 	}
 
 	// Find matching requirement

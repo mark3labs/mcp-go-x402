@@ -29,17 +29,7 @@ type PaymentPayload struct {
 	X402Version int    `json:"x402Version"`
 	Scheme      string `json:"scheme"`
 	Network     string `json:"network"`
-	Payload     struct {
-		Signature     string `json:"signature"`
-		Authorization struct {
-			From        string `json:"from"`
-			To          string `json:"to"`
-			Value       string `json:"value"`
-			ValidAfter  string `json:"validAfter"`
-			ValidBefore string `json:"validBefore"`
-			Nonce       string `json:"nonce"`
-		} `json:"authorization"`
-	} `json:"payload"`
+	Payload     any    `json:"payload"`
 }
 
 // SettlementResponse is included in X-PAYMENT-RESPONSE header

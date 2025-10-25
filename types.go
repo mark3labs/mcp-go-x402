@@ -30,10 +30,10 @@ type PaymentRequirementsResponse struct {
 
 // PaymentPayload is the signed payment sent in X-PAYMENT header
 type PaymentPayload struct {
-	X402Version int                `json:"x402Version"`
-	Scheme      string             `json:"scheme"`
-	Network     string             `json:"network"`
-	Payload     PaymentPayloadData `json:"payload"`
+	X402Version int    `json:"x402Version"`
+	Scheme      string `json:"scheme"`
+	Network     string `json:"network"`
+	Payload     any    `json:"payload"`
 }
 
 // PaymentPayloadData contains the signature and authorization
@@ -50,6 +50,13 @@ type PaymentAuthorization struct {
 	ValidAfter  string `json:"validAfter"`
 	ValidBefore string `json:"validBefore"`
 	Nonce       string `json:"nonce"`
+}
+
+// NewSVMPayload creates a Solana (SVM) payment payload with a base64-encoded transaction
+func NewSVMPayload(transactionBase64 string) map[string]any {
+	return map[string]any{
+		"transaction": transactionBase64,
+	}
 }
 
 // Encode encodes the payment payload as base64 for the X-PAYMENT header
@@ -105,5 +112,6 @@ type ClientPaymentOption struct {
 	Priority   int      `json:"-"` // Lower number = higher priority
 	MaxAmount  string   `json:"-"` // Client's max willing to pay with this option
 	MinBalance string   `json:"-"` // Don't use if balance falls below this
-	ChainID    *big.Int `json:"-"` // Chain ID for signing (internal only)
+	ChainID    *big.Int `json:"-"` // Chain ID for signing (EVM networks)
+	NetworkID  string   `json:"-"` // Network ID for non-EVM networks (e.g., "mainnet-beta", "devnet")
 }

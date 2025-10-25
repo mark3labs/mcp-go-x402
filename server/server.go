@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -24,7 +27,36 @@ func NewX402Server(name, version string, config *Config) *X402Server {
 		config:    config,
 	}
 
+	// Fetch supported payment methods from facilitator on init
+	if config.FacilitatorURL != "" {
+		srv.fetchSupportedPayments()
+	}
+
 	return srv
+}
+
+// fetchSupportedPayments fetches and caches supported payment methods from the facilitator
+func (s *X402Server) fetchSupportedPayments() {
+	facilitator := NewHTTPFacilitator(s.config.FacilitatorURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	supported, err := facilitator.GetSupported(ctx)
+	if err != nil {
+		log.Printf("Warning: failed to fetch supported payments from facilitator: %v", err)
+		log.Printf("  Solana payments may not work correctly without feePayer information")
+		return
+	}
+
+	// Cache supported payment info (including feePayer for Solana networks)
+	SetSupportedPayments(supported)
+
+	if s.config.Verbose {
+		log.Printf("Fetched supported payment methods from facilitator:")
+		for _, kind := range supported {
+			log.Printf("  - %s on %s", kind.Scheme, kind.Network)
+		}
+	}
 }
 
 // AddTool adds a regular (non-paid) tool to the server

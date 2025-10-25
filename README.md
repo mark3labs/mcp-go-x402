@@ -45,16 +45,14 @@ import (
 )
 
 func main() {
-    // Create signer with your private key and explicit payment options
     signer, err := x402.NewPrivateKeySigner(
         "YOUR_PRIVATE_KEY_HEX",
-        x402.AcceptUSDCBase(), // Accept USDC on Base mainnet
+        x402.AcceptUSDCBase(),
     )
     if err != nil {
         log.Fatal(err)
     }
     
-    // Create x402 transport
     transport, err := x402.New(x402.Config{
         ServerURL: "https://paid-mcp-server.example.com",
         Signers:   []x402.PaymentSigner{signer},
@@ -63,7 +61,6 @@ func main() {
         log.Fatal(err)
     }
     
-    // Create MCP client with x402 transport
     mcpClient := client.NewClient(transport)
     
     ctx := context.Background()
@@ -72,7 +69,6 @@ func main() {
     }
     defer mcpClient.Close()
     
-    // Initialize MCP session
     _, err = mcpClient.Initialize(ctx, mcp.InitializeRequest{
         Params: mcp.InitializeParams{
             ProtocolVersion: "1.0.0",
@@ -86,7 +82,6 @@ func main() {
         log.Fatal(err)
     }
     
-    // Use MCP client normally - payments handled automatically!
     tools, _ := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
     log.Printf("Found %d tools", len(tools.Tools))
 }
@@ -129,10 +124,8 @@ func main() {
             mcp.WithDescription("Premium feature"),
             mcp.WithString("input", mcp.Required())),
         premiumToolHandler,
-    // Option 1: Pay with USDC on Base
-    x402server.RequireUSDCBase("0xYourWallet", "10000", "Premium feature via Base"),
-    // Option 2: Pay with USDC on Base Sepolia (testnet)
-    x402server.RequireUSDCBaseSepolia("0xYourWallet", "5000", "Premium feature via Base Sepolia (testnet)"),
+        x402server.RequireUSDCBase("0xYourWallet", "10000", "Premium feature"),
+        x402server.RequireUSDCBaseSepolia("0xYourWallet", "5000", "Premium feature (testnet)"),
     )
     
     // Start server
@@ -157,16 +150,77 @@ func premiumToolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.Call
 }
 ```
 
+## Solana (SVM) Support
+
+The library supports Solana payments using SPL tokens in addition to EVM-based payments.
+
+### Client Usage with Solana
+
+```go
+// Create Solana signer with base58 private key
+signer, err := x402.NewSolanaPrivateKeySigner(
+    privateKeyBase58,
+    x402.AcceptUSDCSolanaDevnet(),
+)
+
+// Or load from Solana CLI keypair file
+signer, err := x402.NewSolanaPrivateKeySignerFromFile(
+    "~/.config/solana/id.json",
+    x402.AcceptUSDCSolana().WithPriority(2),
+)
+
+// Use with transport
+transport, err := x402.New(x402.Config{
+    ServerURL: "http://localhost:8080",
+    Signers:   []x402.PaymentSigner{signer},
+})
+```
+
+### Server Usage with Solana
+
+```go
+srv.AddPayableTool(
+    mcp.NewTool("premium-search",
+        mcp.WithDescription("Premium search on Solana")),
+    searchHandler,
+    x402server.RequireUSDCSolanaDevnet(
+        recipientAddress,
+        "1000000",
+        "Premium search access",
+    ),
+)
+```
+
+### Multi-Chain Support
+
+```go
+evmSigner, _ := x402.NewPrivateKeySigner(
+    evmPrivateKey, 
+    x402.AcceptUSDCBaseSepolia().WithPriority(1),
+)
+
+solSigner, _ := x402.NewSolanaPrivateKeySigner(
+    solPrivateKey,
+    x402.AcceptUSDCSolanaDevnet().WithPriority(2),
+)
+
+transport, _ := x402.New(x402.Config{
+    ServerURL: serverURL,
+    Signers:   []x402.PaymentSigner{evmSigner, solSigner},
+})
+```
+
+**See `examples/svm-client` and `examples/svm-server` for complete working examples.**
+
 ## Client Configuration Options
 
 ### Basic Configuration
 
 ```go
-// Create signer with explicit payment options
 signer, err := x402.NewPrivateKeySigner(
     privateKey,
-    x402.AcceptUSDCBase(),       // Accept USDC on Base
-    x402.AcceptUSDCBaseSepolia(), // Accept USDC on Base Sepolia (testnet)
+    x402.AcceptUSDCBase(),
+    x402.AcceptUSDCBaseSepolia(),
 )
 
 config := x402.Config{
@@ -182,13 +236,11 @@ config := x402.Config{
     ServerURL: "https://server.example.com",
     Signers:   []x402.PaymentSigner{signer},
     PaymentCallback: func(amount *big.Int, resource string) bool {
-        // Custom logic to approve/decline payments
-        // Return true to approve, false to decline
-        if amount.Cmp(big.NewInt(100000)) > 0 { // More than 0.1 USDC
+        if amount.Cmp(big.NewInt(100000)) > 0 {
             fmt.Printf("Approve payment of %s for %s? ", amount, resource)
             return getUserApproval()
         }
-        return true // Auto-approve small amounts
+        return true
     },
 }
 ```
@@ -317,7 +369,9 @@ http.ListenAndServe(":8080", nil)
 
 ## Signer Options (Client)
 
-### Private Key
+### EVM Signers
+
+#### Private Key
 
 ```go
 signer, err := x402.NewPrivateKeySigner(
@@ -326,7 +380,7 @@ signer, err := x402.NewPrivateKeySigner(
 )
 ```
 
-### Mnemonic (BIP-39)
+#### Mnemonic (BIP-39)
 
 ```go
 signer, err := x402.NewMnemonicSigner(
@@ -336,7 +390,7 @@ signer, err := x402.NewMnemonicSigner(
 )
 ```
 
-### Keystore File
+#### Keystore File
 
 ```go
 keystoreJSON, _ := os.ReadFile("keystore.json")
@@ -344,6 +398,28 @@ signer, err := x402.NewKeystoreSigner(
     keystoreJSON,
     "password",
     x402.AcceptUSDCBase(),
+)
+```
+
+### Solana Signers
+
+#### Solana Private Key (Base58)
+
+```go
+signer, err := x402.NewSolanaPrivateKeySigner(
+    "YourBase58PrivateKey",
+    x402.AcceptUSDCSolana(),     // Mainnet
+    // x402.AcceptUSDCSolanaDevnet(), // Or devnet for testing
+)
+```
+
+#### Solana Keypair File
+
+```go
+// Load from Solana CLI keypair file
+signer, err := x402.NewSolanaPrivateKeySignerFromFile(
+    "~/.config/solana/id.json",
+    x402.AcceptUSDCSolanaDevnet(),
 )
 ```
 
@@ -427,7 +503,9 @@ func (s *MyCustomSigner) GetPaymentOption(network, asset string) *x402.ClientPay
 
 ## Testing
 
-### Using Mock Signer
+### Using Mock Signers
+
+#### Mock EVM Signer
 
 ```go
 func TestMyMCPClient(t *testing.T) {
@@ -444,6 +522,23 @@ func TestMyMCPClient(t *testing.T) {
     
     // Test your MCP client
     client := client.NewClient(transport)
+    // ...
+}
+```
+
+#### Mock Solana Signer
+
+```go
+func TestSolanaClient(t *testing.T) {
+    signer := x402.NewMockSolanaSigner(
+        "DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK",
+        x402.AcceptUSDCSolanaDevnet(),
+    )
+    
+    transport, _ := x402.New(x402.Config{
+        ServerURL: "https://test-server.example.com",
+        Signers:   []x402.PaymentSigner{signer},
+    })
     // ...
 }
 ```
@@ -479,26 +574,46 @@ func TestPaymentFlow(t *testing.T) {
 
 ## Supported Networks
 
-Currently, the library includes built-in helper functions for:
+### EVM Networks
 
-- `base` - Base Mainnet (via `AcceptUSDCBase()`)
-- `base-sepolia` - Base Sepolia Testnet (via `AcceptUSDCBaseSepolia()`)
+- `base` - Base Mainnet (via `AcceptUSDCBase()`, `RequireUSDCBase()`)
+- `base-sepolia` - Base Sepolia Testnet (via `AcceptUSDCBaseSepolia()`, `RequireUSDCBaseSepolia()`)
 
-Additional networks can be supported by manually configuring `ClientPaymentOption` objects with the appropriate network, asset, and scheme parameters.
+### Solana (SVM) Networks
+
+- `solana` - Solana Mainnet (via `AcceptUSDCSolana()`, `RequireUSDCSolana()`)
+- `solana-devnet` - Solana Devnet (via `AcceptUSDCSolanaDevnet()`, `RequireUSDCSolanaDevnet()`)
+
+Additional networks can be supported by manually configuring `ClientPaymentOption` or `PaymentRequirement` objects with the appropriate network, asset, and scheme parameters.
 
 ## Security Considerations
 
+### General
 - **Private keys**: Never hardcode private keys. Use environment variables or secure key management.
 - **Payment approval**: Use `PaymentCallback` to control payment approval based on amount or resource.
 - **Network verification**: The library verifies network and asset compatibility before signing.
 - **Per-option limits**: Use `.WithMaxAmount()` on payment options to set per-network spending limits.
 
+### EVM-Specific
+- **Chain ID verification**: Signers verify the chain ID matches the payment option configuration.
+- **EIP-712 signing**: All EVM signatures use typed structured data per EIP-712.
+
+### Solana-Specific
+- **Blockhash expiration**: Solana transactions expire after ~60-90 seconds. The facilitator must submit quickly.
+- **Fee payer trust**: The facilitator acts as the fee payer and adds their signature before submission.
+- **Transaction inspection**: Clients should validate the transaction matches the payment requirement before signing.
+
 ## Examples
 
 See the [examples](./examples) directory for more detailed examples:
 
-- [Client](./examples/client/) - Simple client that can pay for tool use (see [main.go](./examples/client/main.go))
-- [Server](./examples/server/) - Server that collects payments for tool use (see [main.go](./examples/server/main.go))
+### EVM Examples
+- [Client](./examples/client/) - Simple client that can pay for tool use with EVM chains
+- [Server](./examples/server/) - Server that collects payments on EVM chains
+
+### SVM (Solana) Examples
+- [SVM Client](./examples/svm-client/) - Client that uses Solana for payments
+- [SVM Server](./examples/svm-server/) - Server that collects payments on Solana
 
 ## Architecture
 
@@ -529,4 +644,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - [MCP-Go](https://github.com/mark3labs/mcp-go) for the excellent MCP implementation
 - [x402 Protocol](https://x402.org) ([GitHub](https://github.com/coinbase/x402)) for the payment specification
-- [go-ethereum](https://github.com/ethereum/go-ethereum) for crypto utilities
+- [go-ethereum](https://github.com/ethereum/go-ethereum) for EVM crypto utilities
+- [solana-go](https://github.com/gagliardetto/solana-go) for Solana transaction construction and signing
