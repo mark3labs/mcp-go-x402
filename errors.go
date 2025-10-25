@@ -17,10 +17,12 @@ var (
 	ErrUnsupportedAsset   = errors.New("unsupported asset")
 
 	// Signer errors
-	ErrInvalidPrivateKey = errors.New("invalid private key")
-	ErrInvalidMnemonic   = errors.New("invalid mnemonic phrase")
-	ErrInvalidKeystore   = errors.New("invalid keystore file")
-	ErrWrongPassword     = errors.New("wrong keystore password")
+	ErrInvalidPrivateKey     = errors.New("invalid private key")
+	ErrInvalidMnemonic       = errors.New("invalid mnemonic phrase")
+	ErrInvalidKeystore       = errors.New("invalid keystore file")
+	ErrWrongPassword         = errors.New("wrong keystore password")
+	ErrNoSignerConfigured    = errors.New("no payment signer configured")
+	ErrNoViablePaymentOption = errors.New("no viable payment option found across all signers")
 )
 
 // PaymentError provides detailed payment error information
@@ -56,4 +58,37 @@ func NewPaymentError(code, message, resource, amount, network string, wrapped er
 		Network:  network,
 		Wrapped:  wrapped,
 	}
+}
+
+// SignerFailure represents a single signer's failure details
+type SignerFailure struct {
+	SignerIndex    int
+	SignerPriority int
+	SignerAddress  string
+	Reason         string
+	WrappedError   error
+}
+
+// MultiSignerError aggregates failures from multiple signers
+type MultiSignerError struct {
+	Message        string
+	SignerFailures []SignerFailure
+}
+
+func (e *MultiSignerError) Error() string {
+	var result string
+	result = e.Message
+	result += fmt.Sprintf(" across %d signers:\n", len(e.SignerFailures))
+	for _, failure := range e.SignerFailures {
+		result += fmt.Sprintf("  Signer[%d] (priority=%d, address=%s): %s\n",
+			failure.SignerIndex, failure.SignerPriority, failure.SignerAddress, failure.Reason)
+	}
+	return result
+}
+
+func (e *MultiSignerError) Unwrap() error {
+	if len(e.SignerFailures) > 0 && e.SignerFailures[0].WrappedError != nil {
+		return e.SignerFailures[0].WrappedError
+	}
+	return nil
 }

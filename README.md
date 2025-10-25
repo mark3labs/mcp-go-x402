@@ -57,7 +57,7 @@ func main() {
     // Create x402 transport
     transport, err := x402.New(x402.Config{
         ServerURL: "https://paid-mcp-server.example.com",
-        Signer:    signer,
+        Signers:   []x402.PaymentSigner{signer},
     })
     if err != nil {
         log.Fatal(err)
@@ -171,7 +171,7 @@ signer, err := x402.NewPrivateKeySigner(
 
 config := x402.Config{
     ServerURL: "https://server.example.com",
-    Signer:    signer,
+    Signers:   []x402.PaymentSigner{signer},
 }
 ```
 
@@ -180,7 +180,7 @@ config := x402.Config{
 ```go
 config := x402.Config{
     ServerURL: "https://server.example.com",
-    Signer:    signer,
+    Signers:   []x402.PaymentSigner{signer},
     PaymentCallback: func(amount *big.Int, resource string) bool {
         // Custom logic to approve/decline payments
         // Return true to approve, false to decline
@@ -198,7 +198,7 @@ config := x402.Config{
 ```go
 config := x402.Config{
     ServerURL: "https://server.example.com",
-    Signer:    signer,
+    Signers:   []x402.PaymentSigner{signer},
     OnPaymentAttempt: func(event x402.PaymentEvent) {
         log.Printf("Attempting payment: %s to %s", event.Amount, event.Recipient)
     },
@@ -208,6 +208,52 @@ config := x402.Config{
     OnPaymentFailure: func(event x402.PaymentEvent, err error) {
         log.Printf("Payment failed: %v", err)
     },
+}
+```
+
+### Multiple Signers with Fallback
+
+Configure multiple signers with different payment options and priorities. The client will try signers in priority order until one succeeds:
+
+```go
+// Create personal wallet for small payments
+personalSigner, _ := x402.NewPrivateKeySigner(
+    personalKey,
+    x402.AcceptUSDCBase().WithMaxAmount("50000"), // Max 0.05 USDC
+)
+personalSigner.WithPriority(1) // Try first
+
+// Create business wallet for larger payments
+businessSigner, _ := x402.NewPrivateKeySigner(
+    businessKey,
+    x402.AcceptUSDCBase(), // No limit
+)
+businessSigner.WithPriority(2) // Fallback
+
+config := x402.Config{
+    ServerURL: "https://server.example.com",
+    Signers:   []x402.PaymentSigner{personalSigner, businessSigner},
+}
+```
+
+### Multiple Signers with Different Networks
+
+```go
+// Mainnet signer
+mainnetSigner, _ := x402.NewPrivateKeySigner(
+    mainnetKey,
+    x402.AcceptUSDCBase(),
+)
+
+// Testnet signer for development
+testnetSigner, _ := x402.NewPrivateKeySigner(
+    testnetKey,
+    x402.AcceptUSDCBaseSepolia(),
+)
+
+config := x402.Config{
+    ServerURL: "https://server.example.com",
+    Signers:   []x402.PaymentSigner{mainnetSigner, testnetSigner},
 }
 ```
 
@@ -393,7 +439,7 @@ func TestMyMCPClient(t *testing.T) {
     
     transport, _ := x402.New(x402.Config{
         ServerURL: "https://test-server.example.com",
-        Signer:    signer,
+        Signers:   []x402.PaymentSigner{signer},
     })
     
     // Test your MCP client
@@ -415,7 +461,7 @@ func TestPaymentFlow(t *testing.T) {
     
     transport, _ := x402.New(x402.Config{
         ServerURL: testServer.URL,
-        Signer:    signer,
+        Signers:   []x402.PaymentSigner{signer},
     })
     
     // Attach the recorder using the helper function

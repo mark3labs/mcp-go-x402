@@ -13,6 +13,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,12 +67,14 @@ type X402Transport struct {
 // Config configures the X402Transport
 type Config struct {
 	ServerURL        string
-	Signer           PaymentSigner
+	Signer           PaymentSigner   // DEPRECATED: Use Signers instead
+	Signers          []PaymentSigner // Multiple signers with priority
 	PaymentCallback  func(amount *big.Int, resource string) bool
 	HTTPClient       *http.Client
 	OnPaymentAttempt func(PaymentEvent)
 	OnPaymentSuccess func(PaymentEvent)
 	OnPaymentFailure func(PaymentEvent, error)
+	OnSignerAttempt  func(PaymentEvent) // Per-signer attempt callback
 }
 
 // New creates a new X402Transport
@@ -81,14 +84,44 @@ func New(config Config) (*X402Transport, error) {
 		return nil, fmt.Errorf("invalid server URL: %w", err)
 	}
 
-	handlerConfig := &HandlerConfig{
-		PaymentCallback: config.PaymentCallback,
+	// Handle backward compatibility
+	signers := config.Signers
+	if len(signers) == 0 && config.Signer != nil {
+		// Legacy single-signer configuration
+		signers = []PaymentSigner{config.Signer}
 	}
 
-	handler, err := NewPaymentHandler(config.Signer, handlerConfig)
-	if err != nil {
-		return nil, err
+	if len(signers) == 0 {
+		return nil, ErrNoSignerConfigured
 	}
+
+	// Assign implicit priorities based on array order if not set
+	for i, signer := range signers {
+		if signer.GetPriority() == 0 && i > 0 {
+			// If priority is 0 and not first signer, use array index
+			if ps, ok := signer.(*PrivateKeySigner); ok {
+				ps.priority = i
+			} else if ms, ok := signer.(*MnemonicSigner); ok {
+				ms.priority = i
+			} else if ks, ok := signer.(*KeystoreSigner); ok {
+				ks.priority = i
+			} else if mock, ok := signer.(*MockSigner); ok {
+				mock.priority = i
+			}
+		}
+	}
+
+	// Sort signers by priority (stable sort preserves array order for ties)
+	sort.SliceStable(signers, func(i, j int) bool {
+		return signers[i].GetPriority() < signers[j].GetPriority()
+	})
+
+	handlerConfig := &HandlerConfig{
+		PaymentCallback: config.PaymentCallback,
+		OnSignerAttempt: config.OnSignerAttempt,
+	}
+
+	handler := NewPaymentHandlerMulti(signers, handlerConfig)
 
 	httpClient := config.HTTPClient
 	if httpClient == nil {

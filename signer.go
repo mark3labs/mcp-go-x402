@@ -36,6 +36,9 @@ type PaymentSigner interface {
 
 	// GetPaymentOption returns the client payment option that matches the network and asset
 	GetPaymentOption(network, asset string) *ClientPaymentOption
+
+	// GetPriority returns the signer's priority (lower = higher precedence)
+	GetPriority() int
 }
 
 // PrivateKeySigner signs with a raw private key
@@ -43,6 +46,7 @@ type PrivateKeySigner struct {
 	privateKey     *ecdsa.PrivateKey
 	address        common.Address
 	paymentOptions []ClientPaymentOption
+	priority       int // Signer priority (lower = higher precedence)
 }
 
 // NewPrivateKeySigner creates a signer from a hex-encoded private key with explicit payment options
@@ -108,6 +112,17 @@ func (s *PrivateKeySigner) GetPaymentOption(network, asset string) *ClientPaymen
 		}
 	}
 	return nil
+}
+
+// GetPriority returns the signer's priority (lower value = higher priority)
+func (s *PrivateKeySigner) GetPriority() int {
+	return s.priority
+}
+
+// WithPriority sets the signer's priority for multi-signer configurations
+func (s *PrivateKeySigner) WithPriority(priority int) *PrivateKeySigner {
+	s.priority = priority
+	return s
 }
 
 func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
@@ -297,6 +312,17 @@ func NewMnemonicSigner(mnemonic string, derivationPath string, options ...Client
 	}, nil
 }
 
+// GetPriority returns the signer's priority
+func (s *MnemonicSigner) GetPriority() int {
+	return s.PrivateKeySigner.GetPriority()
+}
+
+// WithPriority sets the signer's priority
+func (s *MnemonicSigner) WithPriority(priority int) *MnemonicSigner {
+	s.PrivateKeySigner.WithPriority(priority)
+	return s
+}
+
 // KeystoreSigner signs with a key from an encrypted keystore file
 type KeystoreSigner struct {
 	*PrivateKeySigner
@@ -330,10 +356,22 @@ func NewKeystoreSigner(keystoreJSON []byte, password string, options ...ClientPa
 	}, nil
 }
 
+// GetPriority returns the signer's priority
+func (s *KeystoreSigner) GetPriority() int {
+	return s.PrivateKeySigner.GetPriority()
+}
+
+// WithPriority sets the signer's priority
+func (s *KeystoreSigner) WithPriority(priority int) *KeystoreSigner {
+	s.PrivateKeySigner.WithPriority(priority)
+	return s
+}
+
 // MockSigner is a test signer that generates fake signatures
 type MockSigner struct {
 	address        string
 	paymentOptions []ClientPaymentOption
+	priority       int // Signer priority
 }
 
 // NewMockSigner creates a mock signer for testing with explicit payment options
@@ -430,4 +468,15 @@ func (m *MockSigner) SignPayment(ctx context.Context, req PaymentRequirement) (*
 			},
 		},
 	}, nil
+}
+
+// GetPriority returns the signer's priority
+func (m *MockSigner) GetPriority() int {
+	return m.priority
+}
+
+// WithPriority sets the signer's priority
+func (m *MockSigner) WithPriority(priority int) *MockSigner {
+	m.priority = priority
+	return m
 }
