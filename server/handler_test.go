@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/mark3labs/mcp-go-x402"
 )
 
 // mockMCPHandler simulates an MCP handler
@@ -279,7 +281,7 @@ func TestX402Handler_MultiplePaymentOptions(t *testing.T) {
 					Scheme:            "exact",
 					Network:           "base-mainnet",
 					MaxAmountRequired: "500000", // 0.5 USDC (discount)
-					Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+					Asset:             x402.USDCAddressBase,
 					PayTo:             "0xrecipient",
 					Description:       "Pay with USDC on Base (50% discount)",
 				},
@@ -377,7 +379,7 @@ func TestX402Handler_PaymentMatching(t *testing.T) {
 					Scheme:            "exact",
 					Network:           "base-mainnet",
 					MaxAmountRequired: "500000",
-					Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+					Asset:             x402.USDCAddressBase,
 					PayTo:             "0xrecipient",
 				},
 			},
@@ -396,7 +398,7 @@ func TestX402Handler_PaymentMatching(t *testing.T) {
 			"signature": "0xsig",
 			"authorization": map[string]any{
 				"from":  "0xpayer",
-				"to":    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base USDC
+				"to":    x402.USDCAddressBase, // Base USDC
 				"value": "500000",
 			},
 		},
