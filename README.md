@@ -330,22 +330,32 @@ srv.AddPayableTool(
         mcp.WithDescription("Advanced analytics"),
         mcp.WithString("query", mcp.Required())),
     analyticsHandler,
-    // Base mainnet - standard price
-    x402server.RequireUSDCBase("0xYourWallet", "100000", "Analytics via Base - 0.1 USDC"),
-    // Base Sepolia - testnet option
-    x402server.RequireUSDCBaseSepolia("0xYourWallet", "50000", "Analytics via Base Sepolia (testnet) - 0.05 USDC"),
-    // Custom network example - Ethereum mainnet
-    x402server.PaymentRequirement{
-        Scheme:            "exact",
-        Network:           "ethereum",
-        Asset:             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC on Ethereum
-        PayTo:             "0xYourWallet",
-        MaxAmountRequired: "100000", // 0.1 USDC
-        Description:       "Analytics via Ethereum",
-        MaxTimeoutSeconds: 60,
-    },
+    // Base mainnet - cheapest option
+    x402server.RequireUSDCBase("0xYourWallet", "50000", "Analytics via Base - 0.05 USDC"),
+    // Polygon mainnet - moderate fees
+    x402server.RequireUSDCPolygon("0xYourWallet", "75000", "Analytics via Polygon - 0.075 USDC"),
+    // Avalanche mainnet
+    x402server.RequireUSDCAvalanche("0xYourWallet", "100000", "Analytics via Avalanche - 0.1 USDC"),
+    // Testnet options for development
+    x402server.RequireUSDCBaseSepolia("0xYourWallet", "10000", "Analytics via Base Sepolia (testnet) - 0.01 USDC"),
+    x402server.RequireUSDCPolygonAmoy("0xYourWallet", "10000", "Analytics via Polygon Amoy (testnet) - 0.01 USDC"),
+    x402server.RequireUSDCAvalancheFuji("0xYourWallet", "10000", "Analytics via Avalanche Fuji (testnet) - 0.01 USDC"),
 )
 ```
+
+#### Available Server Helper Functions
+
+**Mainnet:**
+- `RequireUSDCBase(payTo, amount, description)` - Base mainnet
+- `RequireUSDCPolygon(payTo, amount, description)` - Polygon mainnet
+- `RequireUSDCAvalanche(payTo, amount, description)` - Avalanche C-Chain mainnet
+- `RequireUSDCSolana(payTo, amount, description)` - Solana mainnet
+
+**Testnet:**
+- `RequireUSDCBaseSepolia(payTo, amount, description)` - Base Sepolia testnet
+- `RequireUSDCPolygonAmoy(payTo, amount, description)` - Polygon Amoy testnet
+- `RequireUSDCAvalancheFuji(payTo, amount, description)` - Avalanche Fuji testnet
+- `RequireUSDCSolanaDevnet(payTo, amount, description)` - Solana devnet
 
 When a client requests a paid tool without payment, they receive all available payment options and can choose the one that works best for them based on:
 - Network preference (gas fees, speed)
@@ -431,10 +441,34 @@ signer, err := x402.NewPrivateKeySigner(
     // Priority 1: Prefer Base (cheap & fast)
     x402.AcceptUSDCBase().WithPriority(1),
     
-    // Priority 2: Fallback to Base Sepolia (testnet)
-    x402.AcceptUSDCBaseSepolia().WithPriority(2),
+    // Priority 2: Polygon (moderate fees)
+    x402.AcceptUSDCPolygon().WithPriority(2),
+    
+    // Priority 3: Avalanche
+    x402.AcceptUSDCAvalanche().WithPriority(3),
+    
+    // Priority 4: Fallback to testnets
+    x402.AcceptUSDCBaseSepolia().WithPriority(4),
+    x402.AcceptUSDCPolygonAmoy().WithPriority(5),
+    x402.AcceptUSDCAvalancheFuji().WithPriority(6),
 )
 ```
+
+### Supported Chains
+
+#### EVM Chains (Mainnet)
+- **Base**: `x402.AcceptUSDCBase()` - Chain ID: 8453
+- **Polygon**: `x402.AcceptUSDCPolygon()` - Chain ID: 137
+- **Avalanche C-Chain**: `x402.AcceptUSDCAvalanche()` - Chain ID: 43114
+
+#### EVM Chains (Testnet)
+- **Base Sepolia**: `x402.AcceptUSDCBaseSepolia()` - Chain ID: 84532
+- **Polygon Amoy**: `x402.AcceptUSDCPolygonAmoy()` - Chain ID: 80002
+- **Avalanche Fuji**: `x402.AcceptUSDCAvalancheFuji()` - Chain ID: 43113
+
+#### Solana Chains
+- **Solana Mainnet**: `x402.AcceptUSDCSolana()`
+- **Solana Devnet**: `x402.AcceptUSDCSolanaDevnet()`
 
 ### With Custom Limits
 

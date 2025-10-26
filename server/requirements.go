@@ -82,6 +82,78 @@ func RequireUSDCBaseSepolia(payTo, amount, description string) PaymentRequiremen
 	}
 }
 
+// RequireUSDCPolygon creates a payment requirement for USDC on Polygon mainnet
+func RequireUSDCPolygon(payTo, amount, description string) PaymentRequirement {
+	return PaymentRequirement{
+		Scheme:            "exact",
+		Network:           "polygon",
+		Asset:             "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
+		PayTo:             payTo,
+		MaxAmountRequired: amount,
+		Description:       description,
+		MimeType:          "application/json",
+		MaxTimeoutSeconds: 60,
+		Extra: map[string]string{
+			"name":    "USD Coin",
+			"version": "2",
+		},
+	}
+}
+
+// RequireUSDCPolygonAmoy creates a payment requirement for USDC on Polygon Amoy testnet
+func RequireUSDCPolygonAmoy(payTo, amount, description string) PaymentRequirement {
+	return PaymentRequirement{
+		Scheme:            "exact",
+		Network:           "polygon-amoy",
+		Asset:             "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582", // USDC on Polygon Amoy
+		PayTo:             payTo,
+		MaxAmountRequired: amount,
+		Description:       description,
+		MimeType:          "application/json",
+		MaxTimeoutSeconds: 60,
+		Extra: map[string]string{
+			"name":    "USDC",
+			"version": "2",
+		},
+	}
+}
+
+// RequireUSDCAvalanche creates a payment requirement for USDC on Avalanche C-Chain mainnet
+func RequireUSDCAvalanche(payTo, amount, description string) PaymentRequirement {
+	return PaymentRequirement{
+		Scheme:            "exact",
+		Network:           "avalanche",
+		Asset:             "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", // USDC on Avalanche C-Chain
+		PayTo:             payTo,
+		MaxAmountRequired: amount,
+		Description:       description,
+		MimeType:          "application/json",
+		MaxTimeoutSeconds: 60,
+		Extra: map[string]string{
+			"name":    "USD Coin",
+			"version": "2",
+		},
+	}
+}
+
+// RequireUSDCAvalancheFuji creates a payment requirement for USDC on Avalanche Fuji testnet
+func RequireUSDCAvalancheFuji(payTo, amount, description string) PaymentRequirement {
+	return PaymentRequirement{
+		Scheme:            "exact",
+		Network:           "avalanche-fuji",
+		Asset:             "0x5425890298aed601595a70AB815c96711a31Bc65", // USDC on Avalanche Fuji
+		PayTo:             payTo,
+		MaxAmountRequired: amount,
+		Description:       description,
+		MimeType:          "application/json",
+		MaxTimeoutSeconds: 60,
+		Extra: map[string]string{
+			"name":    "USDC",
+			"version": "2",
+		},
+	}
+}
+
 // RequireUSDCSolana creates a payment requirement for USDC on Solana mainnet
 // The feePayer is automatically populated from the facilitator's /supported endpoint
 func RequireUSDCSolana(payTo, amount, description string) PaymentRequirement {

@@ -22,6 +22,27 @@ func TestClientPaymentOptions(t *testing.T) {
 
 		sepoliaOption := AcceptUSDCBaseSepolia()
 		assert.Equal(t, big.NewInt(84532), sepoliaOption.ChainID, "Base Sepolia should have chain ID 84532")
+
+		// Test new chains
+		polygonOption := AcceptUSDCPolygon()
+		assert.Equal(t, big.NewInt(137), polygonOption.ChainID, "Polygon mainnet should have chain ID 137")
+		assert.Equal(t, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", polygonOption.Asset)
+		assert.Equal(t, "polygon", polygonOption.Network)
+
+		polygonAmoyOption := AcceptUSDCPolygonAmoy()
+		assert.Equal(t, big.NewInt(80002), polygonAmoyOption.ChainID, "Polygon Amoy should have chain ID 80002")
+		assert.Equal(t, "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582", polygonAmoyOption.Asset)
+		assert.Equal(t, "polygon-amoy", polygonAmoyOption.Network)
+
+		avalancheOption := AcceptUSDCAvalanche()
+		assert.Equal(t, big.NewInt(43114), avalancheOption.ChainID, "Avalanche mainnet should have chain ID 43114")
+		assert.Equal(t, "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", avalancheOption.Asset)
+		assert.Equal(t, "avalanche", avalancheOption.Network)
+
+		avalancheFujiOption := AcceptUSDCAvalancheFuji()
+		assert.Equal(t, big.NewInt(43113), avalancheFujiOption.ChainID, "Avalanche Fuji should have chain ID 43113")
+		assert.Equal(t, "0x5425890298aed601595a70AB815c96711a31Bc65", avalancheFujiOption.Asset)
+		assert.Equal(t, "avalanche-fuji", avalancheFujiOption.Network)
 	})
 
 	t.Run("AcceptsMultipleOptions", func(t *testing.T) {
@@ -43,6 +64,33 @@ func TestClientPaymentOptions(t *testing.T) {
 		// Check unsupported network
 		assert.False(t, signer.SupportsNetwork("ethereum"))
 		assert.False(t, signer.HasAsset("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "ethereum"))
+	})
+
+	t.Run("AcceptsMultipleChainsIncludingNewOnes", func(t *testing.T) {
+		signer, err := NewPrivateKeySigner(
+			"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+			AcceptUSDCBase().WithPriority(1),
+			AcceptUSDCPolygon().WithPriority(2),
+			AcceptUSDCAvalanche().WithPriority(3),
+			AcceptUSDCPolygonAmoy().WithPriority(4),
+			AcceptUSDCAvalancheFuji().WithPriority(5),
+		)
+		require.NoError(t, err)
+
+		// Check all mainnet chains
+		assert.True(t, signer.SupportsNetwork("base"))
+		assert.True(t, signer.SupportsNetwork("polygon"))
+		assert.True(t, signer.SupportsNetwork("avalanche"))
+
+		// Check all testnet chains
+		assert.True(t, signer.SupportsNetwork("polygon-amoy"))
+		assert.True(t, signer.SupportsNetwork("avalanche-fuji"))
+
+		// Check correct assets
+		assert.True(t, signer.HasAsset("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "polygon"))
+		assert.True(t, signer.HasAsset("0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", "avalanche"))
+		assert.True(t, signer.HasAsset("0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582", "polygon-amoy"))
+		assert.True(t, signer.HasAsset("0x5425890298aed601595a70AB815c96711a31Bc65", "avalanche-fuji"))
 	})
 
 	t.Run("FluentAPI", func(t *testing.T) {
