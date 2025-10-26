@@ -30,6 +30,7 @@ func NewX402Handler(mcpHandler http.Handler, config *Config) *X402Handler {
 	}
 }
 
+// ServeHTTP implements http.Handler and intercepts requests to handle x402 payment flow
 func (h *X402Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Only intercept POST requests (MCP tool calls)
 	if r.Method != http.MethodPost {
@@ -355,10 +356,12 @@ type responseRecorder struct {
 	statusCode int
 }
 
+// Write implements http.ResponseWriter by capturing written bytes
 func (rr *responseRecorder) Write(b []byte) (int, error) {
 	return rr.body.Write(b)
 }
 
+// WriteHeader implements http.ResponseWriter by capturing status code
 func (rr *responseRecorder) WriteHeader(statusCode int) {
 	rr.statusCode = statusCode
 }

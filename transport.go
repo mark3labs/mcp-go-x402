@@ -598,6 +598,7 @@ func (t *X402Transport) sendHTTPWithHeaders(ctx context.Context, method string, 
 }
 
 // handleSSEResponse processes Server-Sent Events stream (similar to StreamableHTTP)
+// handleSSEResponse processes Server-Sent Events response stream
 func (t *X402Transport) handleSSEResponse(ctx context.Context, reader io.ReadCloser, ignoreResponse bool) (*transport.JSONRPCResponse, bool, error) {
 	// Create a channel for this specific request
 	responseChan := make(chan *transport.JSONRPCResponse, 1)
@@ -782,6 +783,7 @@ func (t *X402Transport) GetSessionId() string {
 
 // Helper methods for event recording
 
+// recordPaymentEvent records a payment event for callbacks and recording
 func (t *X402Transport) recordPaymentEvent(eventType PaymentEventType, method string, reqs PaymentRequirementsResponse) {
 	if len(reqs.Accepts) == 0 {
 		return
@@ -821,6 +823,7 @@ func (t *X402Transport) recordPaymentEvent(eventType PaymentEventType, method st
 	}
 }
 
+// recordPaymentError records a payment error event for callbacks and recording
 func (t *X402Transport) recordPaymentError(eventType PaymentEventType, method string, reqs PaymentRequirementsResponse, err error) {
 	if len(reqs.Accepts) == 0 {
 		return

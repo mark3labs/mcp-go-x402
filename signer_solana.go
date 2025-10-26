@@ -19,6 +19,7 @@ type SolanaPrivateKeySigner struct {
 	priority       int
 }
 
+// NewSolanaPrivateKeySigner creates a signer from a base58-encoded Solana private key with explicit payment options
 func NewSolanaPrivateKeySigner(privateKeyBase58 string, options ...ClientPaymentOption) (*SolanaPrivateKeySigner, error) {
 	privateKey, err := solana.PrivateKeyFromBase58(privateKeyBase58)
 	if err != nil {
@@ -42,10 +43,12 @@ func NewSolanaPrivateKeySigner(privateKeyBase58 string, options ...ClientPayment
 	}, nil
 }
 
+// GetAddress returns the signer's Solana address
 func (s *SolanaPrivateKeySigner) GetAddress() string {
 	return s.publicKey.String()
 }
 
+// SupportsNetwork returns true if the signer supports the given network
 func (s *SolanaPrivateKeySigner) SupportsNetwork(network string) bool {
 	for _, opt := range s.paymentOptions {
 		if opt.Network == network {
@@ -55,6 +58,7 @@ func (s *SolanaPrivateKeySigner) SupportsNetwork(network string) bool {
 	return false
 }
 
+// HasAsset returns true if the signer has the given asset on the network
 func (s *SolanaPrivateKeySigner) HasAsset(asset, network string) bool {
 	for _, opt := range s.paymentOptions {
 		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
@@ -64,6 +68,7 @@ func (s *SolanaPrivateKeySigner) HasAsset(asset, network string) bool {
 	return false
 }
 
+// GetPaymentOption returns the client payment option that matches the network and asset
 func (s *SolanaPrivateKeySigner) GetPaymentOption(network, asset string) *ClientPaymentOption {
 	for _, opt := range s.paymentOptions {
 		if opt.Network == network && opt.Asset == asset {
@@ -74,15 +79,18 @@ func (s *SolanaPrivateKeySigner) GetPaymentOption(network, asset string) *Client
 	return nil
 }
 
+// GetPriority returns the signer's priority (lower = higher precedence)
 func (s *SolanaPrivateKeySigner) GetPriority() int {
 	return s.priority
 }
 
+// WithPriority sets the signer's priority for multi-signer configurations
 func (s *SolanaPrivateKeySigner) WithPriority(priority int) *SolanaPrivateKeySigner {
 	s.priority = priority
 	return s
 }
 
+// SignPayment signs a payment authorization for the given requirement
 func (s *SolanaPrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
 	option := s.GetPaymentOption(req.Network, req.Asset)
 	if option == nil {
@@ -207,6 +215,7 @@ func (s *SolanaPrivateKeySigner) SignPayment(ctx context.Context, req PaymentReq
 	}, nil
 }
 
+// NewSolanaPrivateKeySignerFromFile creates a signer from a Solana keypair file with explicit payment options
 func NewSolanaPrivateKeySignerFromFile(filepath string, options ...ClientPaymentOption) (*SolanaPrivateKeySigner, error) {
 	privateKey, err := solana.PrivateKeyFromSolanaKeygenFile(filepath)
 	if err != nil {
@@ -234,6 +243,7 @@ type MockSolanaSigner struct {
 	priority       int
 }
 
+// NewMockSolanaSigner creates a mock Solana signer for testing with explicit payment options
 func NewMockSolanaSigner(address string, options ...ClientPaymentOption) *MockSolanaSigner {
 	if len(options) == 0 {
 		options = []ClientPaymentOption{AcceptUSDCSolanaDevnet()}
@@ -249,10 +259,12 @@ func NewMockSolanaSigner(address string, options ...ClientPaymentOption) *MockSo
 	}
 }
 
+// GetAddress returns the mock signer's address
 func (m *MockSolanaSigner) GetAddress() string {
 	return m.address
 }
 
+// SupportsNetwork returns true if the mock signer supports the given network
 func (m *MockSolanaSigner) SupportsNetwork(network string) bool {
 	for _, opt := range m.paymentOptions {
 		if opt.Network == network {
@@ -262,6 +274,7 @@ func (m *MockSolanaSigner) SupportsNetwork(network string) bool {
 	return false
 }
 
+// HasAsset returns true if the mock signer has the given asset on the network
 func (m *MockSolanaSigner) HasAsset(asset, network string) bool {
 	for _, opt := range m.paymentOptions {
 		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
@@ -271,6 +284,7 @@ func (m *MockSolanaSigner) HasAsset(asset, network string) bool {
 	return false
 }
 
+// GetPaymentOption returns the client payment option that matches the network and asset
 func (m *MockSolanaSigner) GetPaymentOption(network, asset string) *ClientPaymentOption {
 	for _, opt := range m.paymentOptions {
 		if opt.Network == network && opt.Asset == asset {
@@ -281,6 +295,7 @@ func (m *MockSolanaSigner) GetPaymentOption(network, asset string) *ClientPaymen
 	return nil
 }
 
+// SignPayment creates a mock payment signature for testing
 func (m *MockSolanaSigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
 	value := new(big.Int)
 	if _, ok := value.SetString(req.MaxAmountRequired, 10); !ok {
@@ -302,10 +317,12 @@ func (m *MockSolanaSigner) SignPayment(ctx context.Context, req PaymentRequireme
 	}, nil
 }
 
+// GetPriority returns the mock signer's priority (lower = higher precedence)
 func (m *MockSolanaSigner) GetPriority() int {
 	return m.priority
 }
 
+// WithPriority sets the mock signer's priority for multi-signer configurations
 func (m *MockSolanaSigner) WithPriority(priority int) *MockSolanaSigner {
 	m.priority = priority
 	return m

@@ -35,6 +35,7 @@ type PaymentError struct {
 	Wrapped  error
 }
 
+// Error returns the formatted error message
 func (e *PaymentError) Error() string {
 	if e.Wrapped != nil {
 		return fmt.Sprintf("%s: %s (resource: %s, amount: %s, network: %s): %v",
@@ -44,6 +45,7 @@ func (e *PaymentError) Error() string {
 		e.Code, e.Message, e.Resource, e.Amount, e.Network)
 }
 
+// Unwrap returns the underlying wrapped error
 func (e *PaymentError) Unwrap() error {
 	return e.Wrapped
 }
@@ -75,6 +77,7 @@ type MultiSignerError struct {
 	SignerFailures []SignerFailure
 }
 
+// Error returns the formatted error message with details from all signer failures
 func (e *MultiSignerError) Error() string {
 	var result string
 	result = e.Message
@@ -86,6 +89,7 @@ func (e *MultiSignerError) Error() string {
 	return result
 }
 
+// Unwrap returns the first signer's wrapped error if available
 func (e *MultiSignerError) Unwrap() error {
 	if len(e.SignerFailures) > 0 && e.SignerFailures[0].WrappedError != nil {
 		return e.SignerFailures[0].WrappedError

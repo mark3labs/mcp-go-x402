@@ -23,6 +23,7 @@ func SetSupportedPayments(supported []SupportedKind) {
 	}
 }
 
+// cloneStringMap creates a deep copy of a string map
 func cloneStringMap(in map[string]string) map[string]string {
 	if in == nil {
 		return nil
@@ -34,6 +35,7 @@ func cloneStringMap(in map[string]string) map[string]string {
 	return out
 }
 
+// getExtraForNetwork retrieves cached extra data for a network
 func getExtraForNetwork(network string) map[string]string {
 	supportedPaymentsCacheMutex.RLock()
 	defer supportedPaymentsCacheMutex.RUnlock()

@@ -48,6 +48,7 @@ func (f *HTTPFacilitator) SetVerbose(verbose bool) {
 	f.verbose = verbose
 }
 
+// Verify validates a payment against the given requirement
 func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, requirement *PaymentRequirement) (*VerifyResponse, error) {
 	req := &VerifyRequest{
 		X402Version:         1,
@@ -124,6 +125,7 @@ func (f *HTTPFacilitator) Verify(ctx context.Context, payment *PaymentPayload, r
 	return &verifyResp, nil
 }
 
+// Settle processes a payment settlement for the given requirement
 func (f *HTTPFacilitator) Settle(ctx context.Context, payment *PaymentPayload, requirement *PaymentRequirement) (*SettleResponse, error) {
 	req := &SettleRequest{
 		X402Version:         1,
@@ -162,6 +164,7 @@ func (f *HTTPFacilitator) Settle(ctx context.Context, payment *PaymentPayload, r
 	return &settleResp, nil
 }
 
+// GetSupported retrieves the list of supported payment schemes and networks
 func (f *HTTPFacilitator) GetSupported(ctx context.Context) ([]SupportedKind, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", f.baseURL+"/supported", nil)
 	if err != nil {

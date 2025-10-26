@@ -82,10 +82,12 @@ func NewPrivateKeySigner(privateKeyHex string, options ...ClientPaymentOption) (
 	}, nil
 }
 
+// GetAddress returns the signer's Ethereum address
 func (s *PrivateKeySigner) GetAddress() string {
 	return s.address.Hex()
 }
 
+// SupportsNetwork returns true if the signer supports the given network
 func (s *PrivateKeySigner) SupportsNetwork(network string) bool {
 	for _, opt := range s.paymentOptions {
 		if opt.Network == network {
@@ -95,6 +97,7 @@ func (s *PrivateKeySigner) SupportsNetwork(network string) bool {
 	return false
 }
 
+// HasAsset returns true if the signer has the given asset on the network
 func (s *PrivateKeySigner) HasAsset(asset, network string) bool {
 	for _, opt := range s.paymentOptions {
 		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
@@ -104,6 +107,7 @@ func (s *PrivateKeySigner) HasAsset(asset, network string) bool {
 	return false
 }
 
+// GetPaymentOption returns the client payment option that matches the network and asset
 func (s *PrivateKeySigner) GetPaymentOption(network, asset string) *ClientPaymentOption {
 	for _, opt := range s.paymentOptions {
 		if opt.Network == network && opt.Asset == asset {
@@ -125,6 +129,7 @@ func (s *PrivateKeySigner) WithPriority(priority int) *PrivateKeySigner {
 	return s
 }
 
+// SignPayment signs a payment authorization for the given requirement
 func (s *PrivateKeySigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
 	// Find the matching payment option to get chain ID
 	paymentOption := s.GetPaymentOption(req.Network, req.Asset)
@@ -396,10 +401,12 @@ func NewMockSigner(address string, options ...ClientPaymentOption) *MockSigner {
 	}
 }
 
+// GetAddress returns the mock signer's address
 func (m *MockSigner) GetAddress() string {
 	return m.address
 }
 
+// SupportsNetwork returns true if the mock signer supports the given network
 func (m *MockSigner) SupportsNetwork(network string) bool {
 	for _, opt := range m.paymentOptions {
 		if opt.Network == network {
@@ -409,6 +416,7 @@ func (m *MockSigner) SupportsNetwork(network string) bool {
 	return false
 }
 
+// HasAsset returns true if the mock signer has the given asset on the network
 func (m *MockSigner) HasAsset(asset, network string) bool {
 	for _, opt := range m.paymentOptions {
 		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
@@ -418,6 +426,7 @@ func (m *MockSigner) HasAsset(asset, network string) bool {
 	return false
 }
 
+// GetPaymentOption returns the client payment option that matches the network and asset
 func (m *MockSigner) GetPaymentOption(network, asset string) *ClientPaymentOption {
 	for _, opt := range m.paymentOptions {
 		if opt.Network == network && opt.Asset == asset {
@@ -428,6 +437,7 @@ func (m *MockSigner) GetPaymentOption(network, asset string) *ClientPaymentOptio
 	return nil
 }
 
+// SignPayment creates a mock payment signature for testing
 func (m *MockSigner) SignPayment(ctx context.Context, req PaymentRequirement) (*PaymentPayload, error) {
 	// Validate amount even in mock signer
 	value := new(big.Int)

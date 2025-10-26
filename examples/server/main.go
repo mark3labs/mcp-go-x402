@@ -95,6 +95,7 @@ func main() {
 	}
 }
 
+// searchHandler simulates a search operation with mock results
 func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	query := request.GetString("query", "")
 	maxResults := request.GetFloat("max_results", 5)
@@ -132,6 +133,7 @@ Showing top %.0f results`,
 	}, nil
 }
 
+// echoHandler echoes back the provided message
 func echoHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	message := request.GetString("message", "")
 
@@ -149,6 +151,7 @@ func echoHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	}, nil
 }
 
+// testFeatureHandler processes test feature input
 func testFeatureHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	input := request.GetString("input", "")
 
