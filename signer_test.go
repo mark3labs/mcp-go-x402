@@ -22,7 +22,7 @@ func TestSignerChainID(t *testing.T) {
 		payment, err := signer.SignPayment(context.Background(), PaymentRequirement{
 			Scheme:            "exact",
 			Network:           "base",
-			Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+			Asset:             USDCAddressBase,
 			PayTo:             "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb6",
 			MaxAmountRequired: "1000",
 			MaxTimeoutSeconds: 60,
@@ -139,7 +139,7 @@ func TestSignerChainID(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify each option retains its chain ID
-		baseOpt := signer.GetPaymentOption("base", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
+		baseOpt := signer.GetPaymentOption("base", USDCAddressBase)
 		require.NotNil(t, baseOpt)
 		assert.Equal(t, big.NewInt(8453), baseOpt.ChainID)
 
@@ -167,11 +167,11 @@ func TestMnemonicSignerChainID(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify options have chain IDs
-		baseOpt := signer.GetPaymentOption("base", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
+		baseOpt := signer.GetPaymentOption("base", USDCAddressBase)
 		require.NotNil(t, baseOpt)
 		assert.Equal(t, big.NewInt(8453), baseOpt.ChainID)
 
-		sepoliaOpt := signer.GetPaymentOption("base-sepolia", "0x036CbD53842c5426634e7929541eC2318f3dCF7e")
+		sepoliaOpt := signer.GetPaymentOption("base-sepolia", USDCAddressBaseSepolia)
 		require.NotNil(t, sepoliaOpt)
 		assert.Equal(t, big.NewInt(84532), sepoliaOpt.ChainID)
 	})

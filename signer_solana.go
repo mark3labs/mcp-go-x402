@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strings"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/programs/token"
@@ -61,7 +62,7 @@ func (s *SolanaPrivateKeySigner) SupportsNetwork(network string) bool {
 // HasAsset returns true if the signer has the given asset on the network
 func (s *SolanaPrivateKeySigner) HasAsset(asset, network string) bool {
 	for _, opt := range s.paymentOptions {
-		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
+		if opt.Network == network && strings.EqualFold(opt.Asset, asset) && opt.Scheme == "exact" {
 			return true
 		}
 	}
@@ -277,7 +278,7 @@ func (m *MockSolanaSigner) SupportsNetwork(network string) bool {
 // HasAsset returns true if the mock signer has the given asset on the network
 func (m *MockSolanaSigner) HasAsset(asset, network string) bool {
 	for _, opt := range m.paymentOptions {
-		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
+		if opt.Network == network && strings.EqualFold(opt.Asset, asset) && opt.Scheme == "exact" {
 			return true
 		}
 	}

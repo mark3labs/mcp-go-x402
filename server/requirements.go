@@ -2,6 +2,8 @@ package server
 
 import (
 	"sync"
+
+	"github.com/mark3labs/mcp-go-x402"
 )
 
 // Helper functions for common payment requirements with USDC on Base network
@@ -51,7 +53,7 @@ func RequireUSDCBase(payTo, amount, description string) PaymentRequirement {
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "base",
-		Asset:             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+		Asset:             x402.USDCAddressBase,
 		PayTo:             payTo,
 		MaxAmountRequired: amount,
 		Description:       description,
@@ -69,14 +71,14 @@ func RequireUSDCBaseSepolia(payTo, amount, description string) PaymentRequiremen
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "base-sepolia",
-		Asset:             "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // USDC on Base Sepolia
+		Asset:             x402.USDCAddressBaseSepolia,
 		PayTo:             payTo,
 		MaxAmountRequired: amount,
 		Description:       description,
 		MimeType:          "application/json",
 		MaxTimeoutSeconds: 60,
 		Extra: map[string]string{
-			"name":    "USDC", // Exact name for Base Sepolia USDC
+			"name":    "USDC",
 			"version": "2",
 		},
 	}
@@ -87,7 +89,7 @@ func RequireUSDCPolygon(payTo, amount, description string) PaymentRequirement {
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "polygon",
-		Asset:             "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
+		Asset:             x402.USDCAddressPolygon,
 		PayTo:             payTo,
 		MaxAmountRequired: amount,
 		Description:       description,
@@ -105,7 +107,7 @@ func RequireUSDCPolygonAmoy(payTo, amount, description string) PaymentRequiremen
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "polygon-amoy",
-		Asset:             "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582", // USDC on Polygon Amoy
+		Asset:             x402.USDCAddressPolygonAmoy,
 		PayTo:             payTo,
 		MaxAmountRequired: amount,
 		Description:       description,
@@ -123,7 +125,7 @@ func RequireUSDCAvalanche(payTo, amount, description string) PaymentRequirement 
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "avalanche",
-		Asset:             "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", // USDC on Avalanche C-Chain
+		Asset:             x402.USDCAddressAvalanche,
 		PayTo:             payTo,
 		MaxAmountRequired: amount,
 		Description:       description,
@@ -141,7 +143,7 @@ func RequireUSDCAvalancheFuji(payTo, amount, description string) PaymentRequirem
 	return PaymentRequirement{
 		Scheme:            "exact",
 		Network:           "avalanche-fuji",
-		Asset:             "0x5425890298aed601595a70AB815c96711a31Bc65", // USDC on Avalanche Fuji
+		Asset:             x402.USDCAddressAvalancheFuji,
 		PayTo:             payTo,
 		MaxAmountRequired: amount,
 		Description:       description,
@@ -173,7 +175,7 @@ func RequireUSDCSolana(payTo, amount, description string) PaymentRequirement {
 		Scheme:            "exact",
 		Network:           "solana",
 		MaxAmountRequired: amount,
-		Asset:             "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC mint
+		Asset:             x402.USDCMintSolana,
 		PayTo:             payTo,
 		Description:       description,
 		MimeType:          "application/json",
@@ -201,7 +203,7 @@ func RequireUSDCSolanaDevnet(payTo, amount, description string) PaymentRequireme
 		Scheme:            "exact",
 		Network:           "solana-devnet",
 		MaxAmountRequired: amount,
-		Asset:             "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", // Devnet USDC
+		Asset:             x402.USDCMintSolanaDevnet,
 		PayTo:             payTo,
 		Description:       description,
 		MimeType:          "application/json",

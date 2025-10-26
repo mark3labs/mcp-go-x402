@@ -100,7 +100,7 @@ func (s *PrivateKeySigner) SupportsNetwork(network string) bool {
 // HasAsset returns true if the signer has the given asset on the network
 func (s *PrivateKeySigner) HasAsset(asset, network string) bool {
 	for _, opt := range s.paymentOptions {
-		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
+		if opt.Network == network && strings.EqualFold(opt.Asset, asset) && opt.Scheme == "exact" {
 			return true
 		}
 	}
@@ -419,7 +419,7 @@ func (m *MockSigner) SupportsNetwork(network string) bool {
 // HasAsset returns true if the mock signer has the given asset on the network
 func (m *MockSigner) HasAsset(asset, network string) bool {
 	for _, opt := range m.paymentOptions {
-		if opt.Network == network && opt.Asset == asset && opt.Scheme == "exact" {
+		if opt.Network == network && strings.EqualFold(opt.Asset, asset) && opt.Scheme == "exact" {
 			return true
 		}
 	}
