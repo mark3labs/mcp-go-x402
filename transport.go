@@ -121,7 +121,10 @@ func New(config Config) (*X402Transport, error) {
 		OnSignerAttempt: config.OnSignerAttempt,
 	}
 
-	handler := NewPaymentHandlerMulti(signers, handlerConfig)
+	handler, err := NewPaymentHandlerMulti(signers, handlerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create payment handler: %w", err)
+	}
 
 	httpClient := config.HTTPClient
 	if httpClient == nil {

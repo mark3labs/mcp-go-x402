@@ -65,18 +65,22 @@ func (s *X402Server) AddTool(tool mcp.Tool, handler server.ToolHandlerFunc) {
 }
 
 // AddPayableTool adds a tool that requires payment with one or more payment options
+// If no requirements are provided, the tool is added as a regular non-paid tool and an error is logged
 func (s *X402Server) AddPayableTool(
 	tool mcp.Tool,
 	handler server.ToolHandlerFunc,
 	requirements ...PaymentRequirement,
 ) {
-	// Add tool to MCP server
-	s.mcpServer.AddTool(tool, handler)
-
 	// Validate we have at least one requirement
 	if len(requirements) == 0 {
-		panic(fmt.Sprintf("tool %s requires at least one payment requirement", tool.Name))
+		// Log error and add as regular tool instead of panicking
+		log.Printf("ERROR: AddPayableTool called for tool %s without payment requirements. Adding as regular tool instead.", tool.Name)
+		s.mcpServer.AddTool(tool, handler)
+		return
 	}
+
+	// Add tool to MCP server
+	s.mcpServer.AddTool(tool, handler)
 
 	// Register payment requirements
 	if s.config.PaymentTools == nil {

@@ -37,9 +37,9 @@ func NewPaymentHandler(signer PaymentSigner, config *HandlerConfig) (*PaymentHan
 }
 
 // NewPaymentHandlerMulti creates a new payment handler with multiple signers
-func NewPaymentHandlerMulti(signers []PaymentSigner, config *HandlerConfig) *PaymentHandler {
+func NewPaymentHandlerMulti(signers []PaymentSigner, config *HandlerConfig) (*PaymentHandler, error) {
 	if len(signers) == 0 {
-		panic("no signers provided")
+		return nil, ErrNoSignerConfigured
 	}
 
 	if config == nil {
@@ -49,7 +49,7 @@ func NewPaymentHandlerMulti(signers []PaymentSigner, config *HandlerConfig) *Pay
 	return &PaymentHandler{
 		signers: signers,
 		config:  config,
-	}
+	}, nil
 }
 
 // ShouldPay determines if a payment should be made
