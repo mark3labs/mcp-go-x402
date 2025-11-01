@@ -1,3 +1,13 @@
+# ⚠️ ARCHIVED - This Repository Has Moved
+
+**This repository is archived.** MCP functionality has been merged into the main x402-go library:
+
+### 👉 https://mark3labs.com/x402-go
+
+Please use the main library for all future development. This repository is no longer maintained.
+
+---
+
 # mcp-go-x402
 
 x402 payment protocol support for [MCP-Go](https://github.com/mark3labs/mcp-go) clients and servers.
